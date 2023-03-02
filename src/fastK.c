@@ -55,6 +55,40 @@ k_env_t *k_new_env(void) {
 }
 
 /*
+ *    Sets the error handler for a KAPPA environment.
+ *
+ *    @param k_env_t *env                      The environment to set the error handler for.
+ *    @param void (*error)(const char *msg)    The error handler.
+ */
+void k_set_error_handler(k_env_t *env, void (*error)(const char *msg)) {
+    if (env == (k_env_t*)0x0)
+        return;
+
+    env->error = error;
+}
+
+/*
+ *    Returns the current error.
+ *
+ *    @param k_env_t *env       The environment to get the error from.
+ *    @param const char *msg    The error text.
+ * 
+ *    @return const char *   The current error.
+ */
+const char *k_get_error(k_env_t *env, const char *msg) {
+    static char error[256];
+
+    if (env == (k_env_t*)0x0)
+        return (const char*)0x0;
+
+    memset(error, 0, 256);
+
+    k_token_t *tok = &env->lexer->tokens[env->token_idx];
+
+    sprintf(error, "Error | %lu-%lu: %s", tok->line, tok->column, msg);
+}
+
+/*
  *    Advances the lexer to the next char.
  *
  *    @param k_env_t    *env       The environment to advance the lexer in.
@@ -222,6 +256,80 @@ void k_tokenize(k_env_t *env, const char *source) {
 }
 
 /*
+ *    Creates a KAPPA runtime.
+ *
+ *    @param k_env_t    *env       The environment to create the runtime in.
+ *    @param const char *source    The source to create the runtime with.
+ */
+void k_create_runtime(k_env_t *env, const char *source) {
+    if (env == (k_env_t*)0x0 || source == (const char*)0x0)
+        return;
+
+    if (env->runtime != (k_runtime_t*)0x0)
+        free(env->runtime);
+
+    env->runtime = malloc(sizeof(k_runtime_t));
+
+    if (env->runtime == (k_runtime_t*)0x0)
+        return;
+
+    env->runtime->mem            = (char*)0x0;
+    env->runtime->size           = 0;
+    env->runtime->function_table = (k_function_t*)0x0;
+}
+
+/*
+ *    Parses a function declaration.
+ *
+ *    @param k_env_t    *env       The environment to parse the function declaration in.
+ *    @param const char *source    The source to parse the function declaration in.
+ */
+void k_parse_function_declaration(k_env_t *env, const char *source) {
+    if (env == (k_env_t*)0x0 || source == (const char*)0x0)
+        return;
+
+    if (env->lexer == (k_lexer_t*)0x0)
+        return;
+
+    k_lexer_t *lexer = env->lexer;
+
+    if (lexer->tokens[env->token_idx].type_index != K_TOKEN_TYPE_IDENTIFIER) {
+        env->error(k_get_error(env, "Expected identifier for function type."));
+        return;
+    }
+
+    if (lexer->tokens[env->token_idx + 1].type_index != K_TOKEN_TYPE_DECLARATOR) {
+        env->error(k_get_error(env, "Expected declarator ':'."));
+        return;
+    }
+
+    if (lexer->tokens[env->token_idx + 2].type_index != K_TOKEN_TYPE_IDENTIFIER) {
+        env->error(k_get_error(env, "Expected identifier for function name."));
+        return;
+    }
+
+    if (lexer->tokens[env->token_idx + 3].type_index != K_TOKEN_TYPE_NEWEXPRESSION) {
+        env->error(k_get_error(env, "Expected open parenthesis '(' for function parameters."));
+        return;
+    }
+}
+
+/*
+ *    Compiles a KAPPA source file.
+ *
+ *    @param k_env_t    *env       The environment to compile the source in.
+ *    @param const char *source    The source to compile.
+ */
+void k_compile(k_env_t *env, const char *source) {
+    if (env == (k_env_t*)0x0 || source == (const char*)0x0)
+        return;
+
+    k_create_runtime(env, source);
+    
+
+}
+
+/*
  *    Parses a KAPPA source file.
  *
  *    @param k_env_t    *env       The environment to parse the source in.
@@ -246,6 +354,7 @@ void k_parse(k_env_t *env, const char *source) {
     env->lexer->column = 0;
 
     k_tokenize(env, source);
+    k_compile(env, source);
 }
 
 /*

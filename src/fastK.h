@@ -62,7 +62,21 @@ typedef struct {
 } k_lexer_t;
 
 typedef struct {
-    k_lexer_t *lexer;
+    char *name;
+    char *source;
+} k_function_t;
+
+typedef struct {
+    char          *mem;
+    unsigned long  size;
+    k_function_t  *function_table;
+} k_runtime_t;
+
+typedef struct {
+    k_lexer_t      *lexer;
+    k_runtime_t    *runtime;
+    unsigned long   token_idx;
+    void          (*error)(const char *msg);
 } k_env_t;
 
 /*
@@ -71,6 +85,14 @@ typedef struct {
  *    @return k_env_t *    A pointer to the new environment.
  */
 k_env_t *k_new_env(void);
+
+/*
+ *    Sets the error handler for a KAPPA environment.
+ *
+ *    @param k_env_t *env                      The environment to set the error handler for.
+ *    @param void (*error)(const char *msg)    The error handler.
+ */
+void k_set_error_handler(k_env_t *env, void (*error)(const char *msg));
 
 /*
  *    Parses a KAPPA source file.
