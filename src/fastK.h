@@ -31,6 +31,7 @@ typedef enum {
     K_TOKEN_TYPE_NEWINDEX,
     K_TOKEN_TYPE_ENDINDEX,
     K_TOKEN_TYPE_DECLARATOR,
+    K_TOKEN_TYPE_KEYWORD,
 } k_token_type_e;
 
 typedef enum {
@@ -47,10 +48,11 @@ typedef struct {
 } k_tokenable_t;
 
 typedef struct {
-    unsigned long   type_index;
-    unsigned long   line;
-    unsigned long   column;
-    unsigned long   index;
+    k_tokenable_t         *tokenable;
+
+    unsigned long          line;
+    unsigned long          column;
+    unsigned long          index;
 } k_token_t;
 
 typedef struct {
@@ -67,6 +69,8 @@ typedef struct {
 } k_function_t;
 
 typedef struct {
+    char          *data;
+    char          *ops;
     char          *mem;
     unsigned long  size;
     k_function_t  *function_table;
@@ -75,7 +79,7 @@ typedef struct {
 typedef struct {
     k_lexer_t      *lexer;
     k_runtime_t    *runtime;
-    unsigned long   token_idx;
+    k_token_t      *cur_token;
     void          (*error)(const char *msg);
 } k_env_t;
 
