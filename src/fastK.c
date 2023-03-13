@@ -32,6 +32,7 @@ const k_tokenable_t _tokenables[] = {
     {K_TOKEN_TYPE_ENDINDEX,      "]",                                                               K_TOKEN_TERMINATABLE_SINGLE},
     {K_TOKEN_TYPE_DECLARATOR,    ":",                                                               K_TOKEN_TERMINATABLE_SINGLE},
     {K_TOKEN_TYPE_KEYWORD,       (const char*)0x0,                                                  K_TOKEN_TERMINATABLE_UNKNOWN},
+    {K_TOKEN_TYPE_ENDLINE,       ";",                                                               K_TOKEN_TERMINATABLE_SINGLE},
 };
 
 const char *_keywords[] = {
@@ -180,6 +181,26 @@ char *k_get_identifier(const char *source, unsigned long index) {
 }
 
 /*
+ *    Checks if a token string matches another string.
+ *
+ *    @param k_token_t *token    The token to check.
+ *    @param const char *str     The string to check.
+ *    @param const char *source  The source to check.
+ * 
+ *    @return unsigned long      1 if the token string does not match the string, 0 if it does.
+ */
+unsigned long k_token_string_matches(k_token_t *token, const char *str, const char *source) {
+    unsigned long i = 0;
+
+    for (i = 0; i < strlen(str); i++) {
+        if (source[token->index + i] != str[i])
+            return 1;
+    }
+
+    return 0;
+}
+
+/*
  *    Deduces the type of a token.
  *
  *    @param k_env_t    *env       The environment to deduce the token type in.
@@ -313,18 +334,14 @@ void k_lexical_analysis(k_env_t *env, const char *source) {
 
     for (unsigned long i = 0; i < env->lexer->token_count; i++) {
         tok = env->lexer->tokens[i].tokenable;
-        /*
-         *    Remove comments from the token stream.
-         */
+        /* Remove comments from the token stream.  */
         if (tok->type != K_TOKEN_TYPE_COMMENT) {
             new_tokens = realloc(new_tokens, (new_token_count + 1) * sizeof(k_token_t));
             new_tokens[new_token_count] = env->lexer->tokens[i];
             new_token_count++;
         }
         else if (tok->type == K_TOKEN_TYPE_IDENTIFIER) {
-            /*
-             *    Check if an identifier is a constant or a keyword.
-             */
+            /* Check if an identifier is a constant or a keyword.  */
             const char *id = k_get_identifier(source, env->lexer->tokens[i].index);
 
             if (strchr(k_get_tokenable(K_TOKEN_TYPE_NUMBER)->chars, id[0]) != (char*)0x0) {
@@ -347,12 +364,148 @@ void k_lexical_analysis(k_env_t *env, const char *source) {
 }
 
 /*
+ *    Parses an expression.
+ *
+ *    @param k_env_t    *env       The environment to parse the expression in.
+ *    @param const char *source    The source to parse the expression from.
+ */
+void k_parse_expression(k_env_t *env, const char *source) {
+    k_token_type_e **type  = &env->cur_token->tokenable->type;
+
+    if (*type == K_TOKEN_TYPE_NUMBER) {
+        k_advance_token(env);
+        return;
+    }
+
+    if (*type == K_TOKEN_TYPE_STRING) {
+        k_advance_token(env);
+        return;
+    }
+
+    if (*type == K_TOKEN_TYPE_NEWEXPRESSION) {
+        k_advance_token(env);
+        k_parse_expression(env, source);
+        if (*type == K_TOKEN_TYPE_ENDEXPRESSION) {
+            k_advance_token(env);
+            return;
+        }
+    }
+
+    if (*type == K_TOKEN_TYPE_IDENTIFIER) {
+        k_advance_token(env);
+
+        if (*type == K_TOKEN_TYPE_NEWEXPRESSION) {
+            /* Function call e.g. identifier(var1, var2)  */
+            k_advance_token(env);
+            
+        }
+
+        if (*type == K_TOKEN_TYPE_NEWINDEX) {
+            /* Array access e.g.  identifier[var1]  */
+            k_advance_token(env);
+            
+        }
+        return;
+    }
+}
+
+/*
+ *    Parses a statement.
+ *
+ *    @param k_env_t    *env       The environment to parse the statement in.
+ *    @param const char *source    The source to parse the statement from.
+ */
+void k_parse_statement(k_env_t *env, const char *source) {
+    k_token_t      **tok  = &env->cur_token;
+    k_token_type_e **type = &(*tok)->tokenable->type;
+
+    if (*type == K_TOKEN_TYPE_NEWSTATEMENT) {
+        k_advance_token(env);
+        k_parse_statement(env, source);
+        return;
+    }
+
+    if (*type == K_TOKEN_TYPE_KEYWORD) {
+        if (k_token_string_matches(*tok, "return", source) == 0) {
+            k_advance_token(env);
+            k_parse_expression(env, source);
+        } else {
+            k_advance_token(env);
+            k_parse_expression(env, source);
+            k_parse_statement(env, source);
+        }
+    }
+
+    if (*type == K_TOKEN_TYPE_IDENTIFIER) {
+        k_advance_token(env);
+        
+        if (*type == K_TOKEN_TYPE_DECLARATOR) {
+            k_advance_token(env);
+            
+            if (*type == K_TOKEN_TYPE_IDENTIFIER) {
+                k_advance_token(env);
+                
+                if (*type == K_TOKEN_TYPE_OPERATOR) {
+                    k_advance_token(env);
+                    k_parse_expression(env, source);
+                }
+            }
+        }
+    }
+
+    if (*type == K_TOKEN_TYPE_ENDLINE) {
+        k_advance_token(env);
+    } else return;
+}
+
+/*
  *    Parses a global declaration.
  *
  *    @param k_env_t    *env       The environment to parse the function declaration in.
  */
 void k_parse_global_declaration(k_env_t *env, const char *source) {
-    k_lexer_t *lexer = env->lexer;
+    unsigned long  i       = 0;
+    k_token_type_e **type  = &env->cur_token->tokenable->type;
+
+    if (*type == K_TOKEN_TYPE_IDENTIFIER) {
+        k_advance_token(env);
+    } else return;
+
+    if (*type == K_TOKEN_TYPE_DECLARATOR) {
+        k_advance_token(env);
+    } else return;
+
+    if (*type == K_TOKEN_TYPE_IDENTIFIER) {
+        k_advance_token(env);
+    } else return;
+
+    if (*type == K_TOKEN_TYPE_OPERATOR ||*type == K_TOKEN_TYPE_ENDLINE) {
+        /* Global variable declaration.  */
+        k_advance_token(env);
+    } else if (*type == K_TOKEN_TYPE_NEWEXPRESSION) {
+        /* Global function declaration.  */
+        k_advance_token(env);
+        
+        while (*type != K_TOKEN_TYPE_ENDEXPRESSION) {
+            if (*type == K_TOKEN_TYPE_IDENTIFIER && i % 3 == 0 && i % 3 == 2) {
+                k_advance_token(env);
+            }
+            else if (*type == K_TOKEN_TYPE_DECLARATOR && i % 3 == 1) {
+                k_advance_token(env);
+            }
+            else {
+                return;
+            }
+            ++i;
+        }
+    } else return;
+
+    k_advance_token(env);
+
+    if (*type == K_TOKEN_TYPE_NEWSTATEMENT) {
+        k_advance_token(env);
+        k_parse_statement(env, source);
+    } else return;
 }
 
 /*

@@ -32,6 +32,7 @@ typedef enum {
     K_TOKEN_TYPE_ENDINDEX,
     K_TOKEN_TYPE_DECLARATOR,
     K_TOKEN_TYPE_KEYWORD,
+    K_TOKEN_TYPE_ENDLINE,
 } k_token_type_e;
 
 typedef enum {
