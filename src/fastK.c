@@ -42,6 +42,19 @@ const char *_keywords[] = {
     "return",
 };
 
+const char *_types[] = {
+    "s8",
+    "s16",
+    "s32",
+    "s64",
+    "u8",
+    "u16",
+    "u32",
+    "u64",
+    "f32",
+    "f64",
+};
+
 /*
  *    Creates a new KAPPA environment.
  *
@@ -317,6 +330,12 @@ void k_create_runtime(k_env_t *env, const char *source) {
     env->runtime->mem            = (char*)0x0;
     env->runtime->size           = 0;
     env->runtime->function_table = (k_function_t*)0x0;
+
+    env->functions               = (k_interp_func_t*)0x0;
+    env->function_count          = 0;
+    env->globals                 = (k_interp_var_t*)0x0;
+    env->global_count            = 0;
+    env->scope                   = (k_interp_scope_t*)0x0;
 }
 
 /*
@@ -370,7 +389,8 @@ void k_lexical_analysis(k_env_t *env, const char *source) {
  *    @param const char *source    The source to parse the expression from.
  */
 void k_parse_expression(k_env_t *env, const char *source) {
-    k_token_type_e **type  = &env->cur_token->tokenable->type;
+    k_token_type_e **type      = &env->cur_token->tokenable->type;
+    unsigned char    interpret = env->interpret;
 
     if (*type == K_TOKEN_TYPE_NUMBER) {
         k_advance_token(env);
@@ -418,6 +438,7 @@ void k_parse_expression(k_env_t *env, const char *source) {
 void k_parse_statement(k_env_t *env, const char *source) {
     k_token_t      **tok  = &env->cur_token;
     k_token_type_e **type = &(*tok)->tokenable->type;
+    unsigned char    interpret = env->interpret;
 
     if (*type == K_TOKEN_TYPE_NEWSTATEMENT) {
         k_advance_token(env);
@@ -466,8 +487,17 @@ void k_parse_statement(k_env_t *env, const char *source) {
 void k_parse_global_declaration(k_env_t *env, const char *source) {
     unsigned long  i       = 0;
     k_token_type_e **type  = &env->cur_token->tokenable->type;
+    unsigned char    interpret = env->interpret;
+
+    unsigned long type = 0;
+    unsigned long name = 0;
 
     if (*type == K_TOKEN_TYPE_IDENTIFIER) {
+        if (interpret == 0) {
+
+        } else {
+            type = env->cur_token->index;
+        }
         k_advance_token(env);
     } else return;
 
@@ -476,11 +506,21 @@ void k_parse_global_declaration(k_env_t *env, const char *source) {
     } else return;
 
     if (*type == K_TOKEN_TYPE_IDENTIFIER) {
+        if (interpret == 0) {
+
+        } else {
+            name = env->cur_token->index;
+        }
         k_advance_token(env);
     } else return;
 
-    if (*type == K_TOKEN_TYPE_OPERATOR ||*type == K_TOKEN_TYPE_ENDLINE) {
+    if (*type == K_TOKEN_TYPE_OPERATOR || *type == K_TOKEN_TYPE_ENDLINE) {
         /* Global variable declaration.  */
+        if (interpret == 0) {
+
+        } else {
+            
+        }
         k_advance_token(env);
     } else if (*type == K_TOKEN_TYPE_NEWEXPRESSION) {
         /* Global function declaration.  */
@@ -506,6 +546,65 @@ void k_parse_global_declaration(k_env_t *env, const char *source) {
         k_advance_token(env);
         k_parse_statement(env, source);
     } else return;
+}
+
+/*
+ *    Adds a function to the interpreter environment.
+ *
+ *    @param k_env_t      *env       The environment to add the function to.
+ *    @param char         *name      The name of the function.
+ *    @param unsigned long index     The token index of the start statement.
+ */
+void k_add_function(k_env_t *env, const char *name, unsigned long index) {
+    env->functions = realloc(env->functions, sizeof(k_interp_var_t *) * (env->function_count + 1));
+
+    env->functions[env->function_count].name  = name;
+    env->functions[env->function_count].index = index;
+
+    env->function_count++;
+}
+
+/*
+ *    Adds a global variable to the interpreter environment.
+ *
+ *    @param k_env_t    *env       The environment to create the runtime in.
+ *    @param char       *name      The name of the variable.
+ *    @param char       *value     The value of the variable.
+ *    @param char       *type      The type of the variable.
+ */
+void k_add_global(k_env_t *env, const char *name, const char *value, const char *type) {
+    env->globals = realloc(env->globals, sizeof(k_interp_var_t *) * (env->global_count + 1));
+
+    env->globals[env->global_count].name  = name;
+    env->globals[env->global_count].value = value;
+    env->globals[env->global_count].type  = type;
+
+    env->global_count++;
+}
+
+/*
+ *    Adds a local variable to the interpreter environment.
+ *
+ *    @param k_env_t    *env       The environment to create the runtime in.
+ *    @param char       *name      The name of the variable.
+ *    @param char       *value     The value of the variable.
+ *    @param char       *type      The type of the variable.
+ */
+void k_add_local(k_env_t *env, const char *name, const char *value, const char *type) {
+    if (env->scope == (k_interp_scope_t *)0x0) {
+        env->scope            = malloc(sizeof(k_interp_scope_t));
+        env->scope->next      = (k_interp_scope_t *)0x0;
+        env->scope->prev      = (k_interp_scope_t *)0x0;
+        env->scope->var_count = 0;
+    }
+
+    env->scope->vars = realloc(env->scope->vars, sizeof(k_interp_var_t *) * (env->scope->var_count + 1));
+    
+    env->scope->vars[env->scope->var_count].name  = name;
+    env->scope->vars[env->scope->var_count].value = value;
+    env->scope->vars[env->scope->var_count].type  = type;
+
+    env->scope->var_count++;
 }
 
 /*

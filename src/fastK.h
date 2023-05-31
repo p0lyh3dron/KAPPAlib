@@ -78,10 +78,36 @@ typedef struct {
 } k_runtime_t;
 
 typedef struct {
+    char          *name;
+    unsigned long  index;
+} k_interp_func_t;
+
+typedef struct {
+    char *name;
+    char *value;
+    char *type;
+} k_interp_var_t;
+
+typedef struct k_interp_scope_s {
+    k_interp_var_t   *vars;
+    unsigned long     var_count;
+
+    struct k_interp_scope_s *prev;
+    struct k_interp_scope_s *next;
+} k_interp_scope_t;
+
+typedef struct {
     k_lexer_t      *lexer;
     k_runtime_t    *runtime;
     k_token_t      *cur_token;
     void          (*error)(const char *msg);
+
+    unsigned char     interpret;
+    k_interp_func_t  *functions;
+    unsigned long     function_count;
+    k_interp_var_t   *globals;
+    unsigned long     global_count;
+    k_interp_scope_t *scope;
 } k_env_t;
 
 /*
