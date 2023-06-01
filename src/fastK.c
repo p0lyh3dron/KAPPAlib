@@ -33,6 +33,7 @@ const k_tokenable_t _tokenables[] = {
     {K_TOKEN_TYPE_DECLARATOR,    ":",                                                               K_TOKEN_TERMINATABLE_SINGLE},
     {K_TOKEN_TYPE_KEYWORD,       (const char*)0x0,                                                  K_TOKEN_TERMINATABLE_UNKNOWN},
     {K_TOKEN_TYPE_ENDLINE,       ";",                                                               K_TOKEN_TERMINATABLE_SINGLE},
+    {K_TOKEN_TYPE_SEPARATOR,     ",",                                                               K_TOKEN_TERMINATABLE_SINGLE},
 };
 
 const char *_keywords[] = {
@@ -383,14 +384,13 @@ void k_lexical_analysis(k_env_t *env, const char *source) {
 }
 
 /*
- *    Parses an expression.
+ *    Compiles an expression.
  *
  *    @param k_env_t    *env       The environment to parse the expression in.
  *    @param const char *source    The source to parse the expression from.
  */
-void k_parse_expression(k_env_t *env, const char *source) {
+void k_compile_expression(k_env_t *env, const char *source) {
     k_token_type_e **type      = &env->cur_token->tokenable->type;
-    unsigned char    interpret = env->interpret;
 
     if (*type == K_TOKEN_TYPE_NUMBER) {
         k_advance_token(env);
@@ -404,7 +404,7 @@ void k_parse_expression(k_env_t *env, const char *source) {
 
     if (*type == K_TOKEN_TYPE_NEWEXPRESSION) {
         k_advance_token(env);
-        k_parse_expression(env, source);
+        k_compile_expression(env, source);
         if (*type == K_TOKEN_TYPE_ENDEXPRESSION) {
             k_advance_token(env);
             return;
@@ -430,30 +430,29 @@ void k_parse_expression(k_env_t *env, const char *source) {
 }
 
 /*
- *    Parses a statement.
+ *    Compiles a statement.
  *
  *    @param k_env_t    *env       The environment to parse the statement in.
  *    @param const char *source    The source to parse the statement from.
  */
-void k_parse_statement(k_env_t *env, const char *source) {
+void k_compile_statement(k_env_t *env, const char *source) {
     k_token_t      **tok  = &env->cur_token;
     k_token_type_e **type = &(*tok)->tokenable->type;
-    unsigned char    interpret = env->interpret;
 
     if (*type == K_TOKEN_TYPE_NEWSTATEMENT) {
         k_advance_token(env);
-        k_parse_statement(env, source);
+        k_compile_statement(env, source);
         return;
     }
 
     if (*type == K_TOKEN_TYPE_KEYWORD) {
         if (k_token_string_matches(*tok, "return", source) == 0) {
             k_advance_token(env);
-            k_parse_expression(env, source);
+            k_compile_expression(env, source);
         } else {
             k_advance_token(env);
-            k_parse_expression(env, source);
-            k_parse_statement(env, source);
+            k_compile_expression(env, source);
+            k_compile_statement(env, source);
         }
     }
 
@@ -468,7 +467,7 @@ void k_parse_statement(k_env_t *env, const char *source) {
                 
                 if (*type == K_TOKEN_TYPE_OPERATOR) {
                     k_advance_token(env);
-                    k_parse_expression(env, source);
+                    k_compile_expression(env, source);
                 }
             }
         }
@@ -480,24 +479,15 @@ void k_parse_statement(k_env_t *env, const char *source) {
 }
 
 /*
- *    Parses a global declaration.
+ *    Compiles a global declaration.
  *
  *    @param k_env_t    *env       The environment to parse the function declaration in.
  */
-void k_parse_global_declaration(k_env_t *env, const char *source) {
+void k_compile_global_declaration(k_env_t *env, const char *source) {
     unsigned long  i       = 0;
     k_token_type_e **type  = &env->cur_token->tokenable->type;
-    unsigned char    interpret = env->interpret;
-
-    unsigned long type = 0;
-    unsigned long name = 0;
 
     if (*type == K_TOKEN_TYPE_IDENTIFIER) {
-        if (interpret == 0) {
-
-        } else {
-            type = env->cur_token->index;
-        }
         k_advance_token(env);
     } else return;
 
@@ -506,21 +496,11 @@ void k_parse_global_declaration(k_env_t *env, const char *source) {
     } else return;
 
     if (*type == K_TOKEN_TYPE_IDENTIFIER) {
-        if (interpret == 0) {
-
-        } else {
-            name = env->cur_token->index;
-        }
         k_advance_token(env);
     } else return;
 
-    if (*type == K_TOKEN_TYPE_OPERATOR || *type == K_TOKEN_TYPE_ENDLINE) {
-        /* Global variable declaration.  */
-        if (interpret == 0) {
-
-        } else {
-            
-        }
+    if (*type == K_TOKEN_TYPE_OPERATOR) {
+        /* Global variable declaration with value.  */
         k_advance_token(env);
     } else if (*type == K_TOKEN_TYPE_NEWEXPRESSION) {
         /* Global function declaration.  */
@@ -544,7 +524,7 @@ void k_parse_global_declaration(k_env_t *env, const char *source) {
 
     if (*type == K_TOKEN_TYPE_NEWSTATEMENT) {
         k_advance_token(env);
-        k_parse_statement(env, source);
+        k_compile_statement(env, source);
     } else return;
 }
 
@@ -608,6 +588,170 @@ void k_add_local(k_env_t *env, const char *name, const char *value, const char *
 }
 
 /*
+ *    Interprets an expression.
+ *
+ *    @param k_env_t    *env       The environment to parse the expression in.
+ *    @param const char *source    The source to parse the expression from.
+ */
+void k_interpret_expression(k_env_t *env, const char *source) {
+    k_token_type_e **type      = &env->cur_token->tokenable->type;
+
+    if (*type == K_TOKEN_TYPE_NUMBER) {
+        k_advance_token(env);
+        return;
+    }
+
+    if (*type == K_TOKEN_TYPE_STRING) {
+        k_advance_token(env);
+        return;
+    }
+
+    if (*type == K_TOKEN_TYPE_IDENTIFIER) {
+        k_advance_token(env);
+    }
+
+    if (*type == K_TOKEN_TYPE_NEWEXPRESSION) {
+        k_advance_token(env);
+        k_interpret_expression(env, source);
+        if (*type == K_TOKEN_TYPE_ENDEXPRESSION) {
+            k_advance_token(env);
+            return;
+        } else if (*type == K_TOKEN_TYPE_SEPARATOR) {
+            k_advance_token(env);
+            /* Function call e.g. identifier(var1, var2)  */
+            while (*type != K_TOKEN_TYPE_ENDEXPRESSION) {
+                k_interpret_expression(env, source);
+
+                if (*type == K_TOKEN_TYPE_SEPARATOR) {
+                    k_advance_token(env);
+                }
+            }
+        }
+    }
+
+    if (*type == K_TOKEN_TYPE_NEWINDEX) {
+        k_advance_token(env);
+        k_interpret_expression(env, source);
+
+        if (*type == K_TOKEN_TYPE_ENDINDEX) {
+            k_advance_token(env);
+            return;
+        }
+    }
+
+    if (*type == K_TOKEN_TYPE_OPERATOR) {
+        k_advance_token(env);
+        k_interpret_expression(env, source);
+    }
+}
+
+/*
+ *    Interprets a statement.
+ *
+ *    @param k_env_t    *env       The environment to parse the statement in.
+ *    @param const char *source    The source to parse the statement from.
+ */
+void k_interpret_statement(k_env_t *env, const char *source) {
+    k_token_t      **tok  = &env->cur_token;
+    k_token_type_e **type = &(*tok)->tokenable->type;
+
+    if (*type == K_TOKEN_TYPE_NEWSTATEMENT) {
+        k_advance_token(env);
+        k_interpret_statement(env, source);
+        return;
+    }
+
+    if (*type == K_TOKEN_TYPE_KEYWORD) {
+        if (k_token_string_matches(*tok, "return", source) == 0) {
+            k_advance_token(env);
+            k_interpret_expression(env, source);
+        } else {
+            k_advance_token(env);
+            k_interpret_expression(env, source);
+            k_interpret_statement(env, source);
+        }
+    }
+
+    if (*type == K_TOKEN_TYPE_IDENTIFIER) {
+        k_advance_token(env);
+        
+        if (*type == K_TOKEN_TYPE_DECLARATOR) {
+            k_advance_token(env);
+            
+            if (*type == K_TOKEN_TYPE_IDENTIFIER) {
+                k_advance_token(env);
+                
+                if (*type == K_TOKEN_TYPE_OPERATOR) {
+                    k_advance_token(env);
+                    k_interpret_expression(env, source);
+                }
+            }
+        }
+    }
+
+    if (*type == K_TOKEN_TYPE_ENDLINE) {
+        k_advance_token(env);
+    } else return;
+}
+
+/*
+ *    Interprets a global declaration.
+ *
+ *    @param k_env_t    *env       The environment to parse the function declaration in.
+ */
+void k_interpret_global_declaration(k_env_t *env, const char *source) {
+    k_token_type_e **type  = &env->cur_token->tokenable->type;
+
+    if (*type == K_TOKEN_TYPE_IDENTIFIER) {
+        k_advance_token(env);
+    } else return;
+
+    if (*type == K_TOKEN_TYPE_DECLARATOR) {
+        k_advance_token(env);
+    } else return;
+
+    if (*type == K_TOKEN_TYPE_IDENTIFIER) {
+        k_advance_token(env);
+    } else return;
+
+    if (*type == K_TOKEN_TYPE_OPERATOR) {
+        /* Global variable declaration with value.  */
+        k_advance_token(env);
+    } else if (*type == K_TOKEN_TYPE_ENDLINE) {
+        /* Global variable declaration without value.  */
+        k_advance_token(env);
+    } else if (*type == K_TOKEN_TYPE_NEWEXPRESSION) {
+        /* Global function declaration.  */
+        k_advance_token(env);
+        
+        while (*type != K_TOKEN_TYPE_ENDEXPRESSION) {
+            if (*type == K_TOKEN_TYPE_IDENTIFIER) {
+                k_advance_token(env);
+            } else return;
+
+            if (*type == K_TOKEN_TYPE_DECLARATOR) {
+                k_advance_token(env);
+            } else return;
+
+            if (*type == K_TOKEN_TYPE_IDENTIFIER) {
+                k_advance_token(env);
+            } else return;
+
+            if (*type == K_TOKEN_TYPE_SEPARATOR) {
+                k_advance_token(env);
+            }
+        }
+    } else return;
+
+    k_advance_token(env);
+
+    if (*type == K_TOKEN_TYPE_NEWSTATEMENT) {
+        k_advance_token(env);
+        k_interpret_statement(env, source);
+    } else return;
+}
+
+/*
  *    Compiles a KAPPA source file.
  *
  *    @param k_env_t    *env       The environment to compile the source in.
@@ -619,7 +763,7 @@ void k_compile(k_env_t *env, const char *source) {
     env->cur_token = &env->lexer->tokens[0];
 
     while (env->cur_token->tokenable->type != K_TOKEN_TYPE_EOF) {
-        k_parse_global_declaration(env, source);
+        k_compile_global_declaration(env, source);
 
         k_advance_token(env);
     }

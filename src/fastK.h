@@ -33,6 +33,7 @@ typedef enum {
     K_TOKEN_TYPE_DECLARATOR,
     K_TOKEN_TYPE_KEYWORD,
     K_TOKEN_TYPE_ENDLINE,
+    K_TOKEN_TYPE_SEPARATOR,
 } k_token_type_e;
 
 typedef enum {
@@ -102,7 +103,6 @@ typedef struct {
     k_token_t      *cur_token;
     void          (*error)(const char *msg);
 
-    unsigned char     interpret;
     k_interp_func_t  *functions;
     unsigned long     function_count;
     k_interp_var_t   *globals;
