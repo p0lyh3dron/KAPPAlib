@@ -84,9 +84,10 @@ typedef struct {
 } k_interp_func_t;
 
 typedef struct {
-    char *name;
-    char *value;
-    char *type;
+    char         *name;
+    char         *value;
+    char         *type;
+    unsigned long size;
 } k_interp_var_t;
 
 typedef struct k_interp_scope_s {
@@ -102,6 +103,8 @@ typedef struct {
     k_runtime_t    *runtime;
     k_token_t      *cur_token;
     void          (*error)(const char *msg);
+
+    k_interp_var_t    ret;
 
     k_interp_func_t  *functions;
     unsigned long     function_count;

@@ -597,20 +597,68 @@ void k_interpret_expression(k_env_t *env, const char *source) {
     k_token_type_e **type      = &env->cur_token->tokenable->type;
 
     if (*type == K_TOKEN_TYPE_NUMBER) {
+        /* Interpret number literal as a s64, in C as long.  */
+        env->ret.type = (char *)realloc(env->ret.type, sizeof(char) * (strlen("s64") + 1));
+        strcpy(env->ret.type, "s64");
+
+        env->ret.value = (char *)realloc(env->ret.value, sizeof(long));
+        *(long *)env->ret.value = atol(source + env->cur_token->index);
+
+        env->ret.size = sizeof(long);
+
         k_advance_token(env);
         return;
     }
 
     if (*type == K_TOKEN_TYPE_STRING) {
+        /* Interpret string literal as ptr_u8, in C as char *.  */
+        /* do later lol  */
+
         k_advance_token(env);
         return;
     }
 
     if (*type == K_TOKEN_TYPE_IDENTIFIER) {
+        /* Return the identifier's value. */
+
+        /* Check if the identifier is a global variable.  */
+        for (unsigned long i = 0; i < env->global_count; ++i) {
+            if (strcmp(env->globals[i].name, source + env->cur_token->index) == 0) {
+                env->ret.type = (char *)realloc(env->ret.type, sizeof(char) * (strlen(env->globals[i].type) + 1));
+                strcpy(env->ret.type, env->globals[i].type);
+
+                env->ret.value = (char *)realloc(env->ret.value, sizeof(char) * (strlen(env->globals[i].value) + 1));
+                strcpy(env->ret.value, env->globals[i].value);
+
+                env->ret.size = strlen(env->globals[i].value);
+
+                k_advance_token(env);
+                return;
+            }
+        }
+
+        /* Check if the identifier is a local variable.  */
+        if (env->scope != (k_interp_scope_t *)0x0) {
+            for (unsigned long i = 0; i < env->scope->var_count; ++i) {
+                if (strcmp(env->scope->vars[i].name, source + env->cur_token->index) == 0) {
+                    env->ret.type = (char *)realloc(env->ret.type, sizeof(char) * (strlen(env->scope->vars[i].type) + 1));
+                    strcpy(env->ret.type, env->scope->vars[i].type);
+
+                    env->ret.value = (char *)realloc(env->ret.value, sizeof(char) * (strlen(env->scope->vars[i].value) + 1));
+                    strcpy(env->ret.value, env->scope->vars[i].value);
+
+                    env->ret.size = strlen(env->scope->vars[i].value);
+
+                    k_advance_token(env);
+                    return;
+                }
+            }
+        }
         k_advance_token(env);
     }
 
     if (*type == K_TOKEN_TYPE_NEWEXPRESSION) {
+        /* Accessor for the previous identifier  */
         k_advance_token(env);
         k_interpret_expression(env, source);
         if (*type == K_TOKEN_TYPE_ENDEXPRESSION) {
@@ -658,17 +706,33 @@ void k_interpret_statement(k_env_t *env, const char *source) {
     if (*type == K_TOKEN_TYPE_NEWSTATEMENT) {
         k_advance_token(env);
         k_interpret_statement(env, source);
-        return;
+        if (*type == K_TOKEN_TYPE_ENDSTATEMENT) {
+            k_advance_token(env);
+            return;
+        }
     }
 
     if (*type == K_TOKEN_TYPE_KEYWORD) {
         if (k_token_string_matches(*tok, "return", source) == 0) {
             k_advance_token(env);
             k_interpret_expression(env, source);
+
+            if (*type == K_TOKEN_TYPE_ENDLINE) {
+                k_advance_token(env);
+                return;
+            }
         } else {
             k_advance_token(env);
             k_interpret_expression(env, source);
-            k_interpret_statement(env, source);
+            if (*type == K_TOKEN_TYPE_NEWSTATEMENT) {
+                k_interpret_statement(env, source);
+                k_advance_token(env);
+            }
+            
+            if (*type == K_TOKEN_TYPE_ENDSTATEMENT) {
+                k_advance_token(env);
+                return;
+            }
         }
     }
 
@@ -677,6 +741,7 @@ void k_interpret_statement(k_env_t *env, const char *source) {
         
         if (*type == K_TOKEN_TYPE_DECLARATOR) {
             k_advance_token(env);
+            /* Local declaration  */
             
             if (*type == K_TOKEN_TYPE_IDENTIFIER) {
                 k_advance_token(env);
@@ -688,10 +753,6 @@ void k_interpret_statement(k_env_t *env, const char *source) {
             }
         }
     }
-
-    if (*type == K_TOKEN_TYPE_ENDLINE) {
-        k_advance_token(env);
-    } else return;
 }
 
 /*
