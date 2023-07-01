@@ -36,6 +36,8 @@ int main() {
         return 1;
     }
 
+    k_set_error_handler(env, puts);
+
     k_parse(env, source);
 
     free(source);

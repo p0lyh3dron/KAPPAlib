@@ -102,6 +102,8 @@ const char *k_get_error(k_env_t *env, const char *msg) {
     memset(error, 0, 256);
 
     sprintf(error, "Error | %lu-%lu: %s", env->cur_token->line, env->cur_token->column, msg);
+
+    return error;
 }
 
 /*
@@ -121,6 +123,8 @@ void k_advance_lexer(k_env_t *env) {
  */
 void k_advance_token(k_env_t *env) {
     env->cur_token += 1;
+
+    env->cur_type  = env->cur_token->tokenable->type;
 }
 
 /*
@@ -133,20 +137,16 @@ void k_skip_whitespace(k_env_t *env, const char *source) {
     unsigned long *index = &env->lexer->index;
     k_lexer_t     *lexer = env->lexer;
 
-loop_ws:
+    while (source[*index] == ' '  || source[*index] == '\t' || source[*index] == '\r' || source[*index] == '\n') {
+        if (source[*index] == '\n') {
+            lexer->line++;
+            lexer->index++;
 
-    while (source[*index] == ' '  || source[*index] == '\t' || source[*index] == '\r')
-        k_advance_lexer(env);
-    
-    if (source[lexer->index] == '\n') {
-        lexer->line++;
-        lexer->index++;
-
-        lexer->column = 0;
+            lexer->column = 1;
+        }
+        else
+            k_advance_lexer(env);
     }
-
-    if (source[*index] == ' '  || source[*index] == '\t' || source[*index] == '\r')
-        goto loop_ws;
 
     return;
 }
@@ -233,6 +233,8 @@ k_tokenable_t *k_deduce_token_type(k_env_t *env, const char *source) {
             return &_tokenables[i];
     }
 
+    env->error(k_get_error(env, "Unknown token"));
+
     return k_get_tokenable(K_TOKEN_TYPE_UNKNOWN);
 }
 
@@ -301,10 +303,10 @@ void k_tokenize(k_env_t *env, const char *source) {
 
         env->cur_token                = &lexer->tokens[i];
 
-        lexer->tokens[i].tokenable    = k_deduce_token_type(env, source);
         lexer->tokens[i].line         = lexer->line;
         lexer->tokens[i].column       = lexer->column;
         lexer->tokens[i].index        = lexer->index;
+        lexer->tokens[i].tokenable    = k_deduce_token_type(env, source);
         lexer->token_count            = ++i;
 
         k_parse_token(env, source);
@@ -354,13 +356,8 @@ void k_lexical_analysis(k_env_t *env, const char *source) {
 
     for (unsigned long i = 0; i < env->lexer->token_count; i++) {
         tok = env->lexer->tokens[i].tokenable;
-        /* Remove comments from the token stream.  */
-        if (tok->type != K_TOKEN_TYPE_COMMENT) {
-            new_tokens = realloc(new_tokens, (new_token_count + 1) * sizeof(k_token_t));
-            new_tokens[new_token_count] = env->lexer->tokens[i];
-            new_token_count++;
-        }
-        else if (tok->type == K_TOKEN_TYPE_IDENTIFIER) {
+
+        if (tok->type == K_TOKEN_TYPE_IDENTIFIER) {
             /* Check if an identifier is a constant or a keyword.  */
             const char *id = k_get_identifier(source, env->lexer->tokens[i].index);
 
@@ -374,6 +371,13 @@ void k_lexical_analysis(k_env_t *env, const char *source) {
                     }
                 }
             }
+        }
+
+        /* Remove comments from the token stream.  */
+        if (tok->type != K_TOKEN_TYPE_COMMENT) {
+            new_tokens = realloc(new_tokens, (new_token_count + 1) * sizeof(k_token_t));
+            new_tokens[new_token_count] = env->lexer->tokens[i];
+            new_token_count++;
         }
     }
 
@@ -390,7 +394,7 @@ void k_lexical_analysis(k_env_t *env, const char *source) {
  *    @param const char *source    The source to parse the expression from.
  */
 void k_compile_expression(k_env_t *env, const char *source) {
-    k_token_type_e **type      = &env->cur_token->tokenable->type;
+    k_token_type_e *type      = &env->cur_type;
 
     if (*type == K_TOKEN_TYPE_NUMBER) {
         k_advance_token(env);
@@ -437,45 +441,46 @@ void k_compile_expression(k_env_t *env, const char *source) {
  */
 void k_compile_statement(k_env_t *env, const char *source) {
     k_token_t      **tok  = &env->cur_token;
-    k_token_type_e **type = &(*tok)->tokenable->type;
+    k_token_type_e *type  = &env->cur_type;
 
-    if (*type == K_TOKEN_TYPE_NEWSTATEMENT) {
-        k_advance_token(env);
-        k_compile_statement(env, source);
-        return;
-    }
-
-    if (*type == K_TOKEN_TYPE_KEYWORD) {
-        if (k_token_string_matches(*tok, "return", source) == 0) {
+    do {
+        if (*type == K_TOKEN_TYPE_NEWSTATEMENT) {
             k_advance_token(env);
-            k_compile_expression(env, source);
-        } else {
-            k_advance_token(env);
-            k_compile_expression(env, source);
             k_compile_statement(env, source);
         }
-    }
 
-    if (*type == K_TOKEN_TYPE_IDENTIFIER) {
-        k_advance_token(env);
-        
-        if (*type == K_TOKEN_TYPE_DECLARATOR) {
+        if (*type == K_TOKEN_TYPE_KEYWORD) {
+            if (k_token_string_matches(*tok, "return", source) == 0) {
+                k_advance_token(env);
+                k_compile_expression(env, source);
+            } else {
+                k_advance_token(env);
+                k_compile_expression(env, source);
+                k_compile_statement(env, source);
+            }
+        }
+
+        if (*type == K_TOKEN_TYPE_IDENTIFIER) {
             k_advance_token(env);
             
-            if (*type == K_TOKEN_TYPE_IDENTIFIER) {
+            if (*type == K_TOKEN_TYPE_DECLARATOR) {
                 k_advance_token(env);
                 
-                if (*type == K_TOKEN_TYPE_OPERATOR) {
+                if (*type == K_TOKEN_TYPE_IDENTIFIER) {
                     k_advance_token(env);
-                    k_compile_expression(env, source);
+                    
+                    if (*type == K_TOKEN_TYPE_OPERATOR) {
+                        k_advance_token(env);
+                        k_compile_expression(env, source);
+                    }
                 }
             }
         }
-    }
 
-    if (*type == K_TOKEN_TYPE_ENDLINE) {
-        k_advance_token(env);
-    } else return;
+        if (*type == K_TOKEN_TYPE_ENDLINE) {
+            k_advance_token(env);
+        } else return;
+    } while (*type != K_TOKEN_TYPE_ENDSTATEMENT);
 }
 
 /*
@@ -485,7 +490,11 @@ void k_compile_statement(k_env_t *env, const char *source) {
  */
 void k_compile_global_declaration(k_env_t *env, const char *source) {
     unsigned long  i       = 0;
-    k_token_type_e **type  = &env->cur_token->tokenable->type;
+    k_token_type_e *type   = &env->cur_type;
+
+    if (*type == K_TOKEN_TYPE_ENDLINE) {
+        k_advance_token(env);
+    }
 
     if (*type == K_TOKEN_TYPE_IDENTIFIER) {
         k_advance_token(env);
@@ -502,29 +511,42 @@ void k_compile_global_declaration(k_env_t *env, const char *source) {
     if (*type == K_TOKEN_TYPE_OPERATOR) {
         /* Global variable declaration with value.  */
         k_advance_token(env);
+        k_compile_expression(env, source);
+
+        if (*type == K_TOKEN_TYPE_ENDLINE) {
+            k_advance_token(env);
+        } else return;
+    } else if (*type == K_TOKEN_TYPE_ENDLINE) {
+        /* Global variable declaration without value.  */
+        k_advance_token(env);
     } else if (*type == K_TOKEN_TYPE_NEWEXPRESSION) {
         /* Global function declaration.  */
         k_advance_token(env);
         
         while (*type != K_TOKEN_TYPE_ENDEXPRESSION) {
-            if (*type == K_TOKEN_TYPE_IDENTIFIER && i % 3 == 0 && i % 3 == 2) {
+            if (*type == K_TOKEN_TYPE_IDENTIFIER) {
+                k_advance_token(env);
+            } else return;
+
+            if (*type == K_TOKEN_TYPE_DECLARATOR) {
+                k_advance_token(env);
+            } else return;
+
+            if (*type == K_TOKEN_TYPE_IDENTIFIER) {
+                k_advance_token(env);
+            } else return;
+
+            if (*type == K_TOKEN_TYPE_SEPARATOR) {
                 k_advance_token(env);
             }
-            else if (*type == K_TOKEN_TYPE_DECLARATOR && i % 3 == 1) {
-                k_advance_token(env);
-            }
-            else {
-                return;
-            }
-            ++i;
         }
-    } else return;
 
-    k_advance_token(env);
-
-    if (*type == K_TOKEN_TYPE_NEWSTATEMENT) {
         k_advance_token(env);
-        k_compile_statement(env, source);
+
+        if (*type == K_TOKEN_TYPE_NEWSTATEMENT) {
+            k_advance_token(env);
+            k_compile_statement(env, source);
+        } else return;
     } else return;
 }
 
@@ -780,7 +802,7 @@ void k_interpret_global_declaration(k_env_t *env, const char *source) {
         k_advance_token(env);
     } else if (*type == K_TOKEN_TYPE_ENDLINE) {
         /* Global variable declaration without value.  */
-        k_advance_token(env);
+        return;
     } else if (*type == K_TOKEN_TYPE_NEWEXPRESSION) {
         /* Global function declaration.  */
         k_advance_token(env);
@@ -822,6 +844,7 @@ void k_compile(k_env_t *env, const char *source) {
     k_create_runtime(env, source);
 
     env->cur_token = &env->lexer->tokens[0];
+    env->cur_type  =  env->cur_token->tokenable->type;
 
     while (env->cur_token->tokenable->type != K_TOKEN_TYPE_EOF) {
         k_compile_global_declaration(env, source);

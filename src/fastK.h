@@ -102,6 +102,7 @@ typedef struct {
     k_lexer_t      *lexer;
     k_runtime_t    *runtime;
     k_token_t      *cur_token;
+    k_token_type_e  cur_type;
     void          (*error)(const char *msg);
 
     k_interp_var_t    ret;
