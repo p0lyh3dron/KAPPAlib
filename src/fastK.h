@@ -114,6 +114,11 @@ typedef struct {
     k_interp_scope_t *scope;
 } k_env_t;
 
+typedef enum {
+    K_ERROR_NONE = 0,
+    K_ERROR_UNEXPECTED_TOKEN,
+} k_compile_error_t;
+
 /*
  *    Creates a new KAPPA environment.
  *

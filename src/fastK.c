@@ -12,6 +12,7 @@
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof(x[0]))
 
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -93,15 +94,23 @@ void k_set_error_handler(k_env_t *env, void (*error)(const char *msg)) {
  *
  *    @param k_env_t *env       The environment to get the error from.
  *    @param const char *msg    The error text.
+ *    @param ...                The arguments to the error text.
  * 
  *    @return const char *   The current error.
  */
-const char *k_get_error(k_env_t *env, const char *msg) {
+const char *k_get_error(k_env_t *env, const char *msg, ...) {
     static char error[256];
+    static char buffer[256];
+
+    va_list args;
 
     memset(error, 0, 256);
 
-    sprintf(error, "Error | %lu-%lu: %s", env->cur_token->line, env->cur_token->column, msg);
+    va_start(args, msg);
+    vsprintf(buffer, msg, args);
+    va_end(args);
+
+    sprintf(error, "Error | %lu-%lu: %s", env->cur_token->line, env->cur_token->column, buffer);
 
     return error;
 }
@@ -123,6 +132,17 @@ void k_advance_lexer(k_env_t *env) {
  */
 void k_advance_token(k_env_t *env) {
     env->cur_token += 1;
+
+    env->cur_type  = env->cur_token->tokenable->type;
+}
+
+/*
+ *    Reverts to the previous token.
+ *
+ *    @param k_env_t    *env       The environment to revert the lexer in.
+ */
+void k_revert_token(k_env_t *env) {
+    env->cur_token -= 1;
 
     env->cur_type  = env->cur_token->tokenable->type;
 }
@@ -277,6 +297,7 @@ const char *k_parse_token(k_env_t *env, const char *source) {
 
                 k_advance_lexer(env);
             } while (source[*idx] != tok->chars[0]);
+            k_advance_lexer(env);
             break;
     }
 
