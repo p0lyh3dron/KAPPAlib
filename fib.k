@@ -1,4 +1,10 @@
-u64: global = 0;
+$
+*    fib.k    --    test source for KAPPA
+*
+*    Computes the nth Fibonacci number.
+$
+
+$u64: _global = 0;$
 
 u64: fib(u64: n) {
     u64: i = 0;
@@ -10,6 +16,8 @@ u64: fib(u64: n) {
         z = x + y;
         x = y;
         y = z;
+
+        i = i + 1;
     }
 
     return x;

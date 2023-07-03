@@ -55,6 +55,7 @@ typedef struct {
     unsigned long          line;
     unsigned long          column;
     unsigned long          index;
+    unsigned long          length;
 } k_token_t;
 
 typedef struct {
@@ -66,8 +67,9 @@ typedef struct {
 } k_lexer_t;
 
 typedef struct {
-    char *name;
-    char *source;
+    char          *name;
+    char          *source;
+    unsigned long  size;
 } k_function_t;
 
 typedef struct {
@@ -76,6 +78,7 @@ typedef struct {
     char          *mem;
     unsigned long  size;
     k_function_t  *function_table;
+    unsigned long  function_count;
 } k_runtime_t;
 
 typedef struct {
@@ -103,6 +106,7 @@ typedef struct {
     k_runtime_t    *runtime;
     k_token_t      *cur_token;
     k_token_type_e  cur_type;
+    k_function_t   *cur_function;
     void          (*error)(const char *msg);
 
     k_interp_var_t    ret;

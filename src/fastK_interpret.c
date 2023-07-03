@@ -52,6 +52,7 @@ void k_add_global(k_env_t *env, const char *name, const char *value, const char 
  *    @param char       *value     The value of the variable.
  *    @param char       *type      The type of the variable.
  */
+#if 0
 void k_add_local(k_env_t *env, const char *name, const char *value, const char *type) {
     if (env->scope == (k_interp_scope_t *)0x0) {
         env->scope            = malloc(sizeof(k_interp_scope_t));
@@ -68,6 +69,7 @@ void k_add_local(k_env_t *env, const char *name, const char *value, const char *
 
     env->scope->var_count++;
 }
+#endif
 
 /*
  *    Interprets an expression.

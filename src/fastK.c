@@ -10,52 +10,13 @@
  */
 #include "fastK.h"
 
-#define ARRAY_SIZE(x) (sizeof(x) / sizeof(x[0]))
-
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-const k_tokenable_t _tokenables[] = {
-    {K_TOKEN_TYPE_UNKNOWN,       (const char*)0x0,                                                  K_TOKEN_TERMINATABLE_UNKNOWN},
-    {K_TOKEN_TYPE_EOF,           "\0",                                                              K_TOKEN_TERMINATABLE_SINGLE},
-    {K_TOKEN_TYPE_IDENTIFIER,    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", K_TOKEN_TERMINATABLE_MULTIPLE},
-    {K_TOKEN_TYPE_NUMBER,        "0123456789",                                                      K_TOKEN_TERMINATABLE_MULTIPLE},
-    {K_TOKEN_TYPE_STRING,        "\"",                                                              K_TOKEN_TERMINATABLE_REOCCUR},
-    {K_TOKEN_TYPE_OPERATOR,      "+-*/%&|!^~<>=",                                                   K_TOKEN_TERMINATABLE_MULTIPLE},
-    {K_TOKEN_TYPE_COMMENT,       "$",                                                               K_TOKEN_TERMINATABLE_REOCCUR},
-    {K_TOKEN_TYPE_NEWSTATEMENT,  "{",                                                               K_TOKEN_TERMINATABLE_SINGLE},
-    {K_TOKEN_TYPE_ENDSTATEMENT,  "}",                                                               K_TOKEN_TERMINATABLE_SINGLE},
-    {K_TOKEN_TYPE_NEWEXPRESSION, "(",                                                               K_TOKEN_TERMINATABLE_SINGLE},
-    {K_TOKEN_TYPE_ENDEXPRESSION, ")",                                                               K_TOKEN_TERMINATABLE_SINGLE},
-    {K_TOKEN_TYPE_NEWINDEX,      "[",                                                               K_TOKEN_TERMINATABLE_SINGLE},
-    {K_TOKEN_TYPE_ENDINDEX,      "]",                                                               K_TOKEN_TERMINATABLE_SINGLE},
-    {K_TOKEN_TYPE_DECLARATOR,    ":",                                                               K_TOKEN_TERMINATABLE_SINGLE},
-    {K_TOKEN_TYPE_KEYWORD,       (const char*)0x0,                                                  K_TOKEN_TERMINATABLE_UNKNOWN},
-    {K_TOKEN_TYPE_ENDLINE,       ";",                                                               K_TOKEN_TERMINATABLE_SINGLE},
-    {K_TOKEN_TYPE_SEPARATOR,     ",",                                                               K_TOKEN_TERMINATABLE_SINGLE},
-};
-
-const char *_keywords[] = {
-    "if",
-    "else",
-    "while",
-    "return",
-};
-
-const char *_types[] = {
-    "s8",
-    "s16",
-    "s32",
-    "s64",
-    "u8",
-    "u16",
-    "u32",
-    "u64",
-    "f32",
-    "f64",
-};
+#include "builtin.h"
+#include "util.h"
 
 /*
  *    Creates a new KAPPA environment.
@@ -87,32 +48,6 @@ void k_set_error_handler(k_env_t *env, void (*error)(const char *msg)) {
         return;
 
     env->error = error;
-}
-
-/*
- *    Returns the current error.
- *
- *    @param k_env_t *env       The environment to get the error from.
- *    @param const char *msg    The error text.
- *    @param ...                The arguments to the error text.
- * 
- *    @return const char *   The current error.
- */
-const char *k_get_error(k_env_t *env, const char *msg, ...) {
-    static char error[256];
-    static char buffer[256];
-
-    va_list args;
-
-    memset(error, 0, 256);
-
-    va_start(args, msg);
-    vsprintf(buffer, msg, args);
-    va_end(args);
-
-    sprintf(error, "Error | %lu-%lu: %s", env->cur_token->line, env->cur_token->column, buffer);
-
-    return error;
 }
 
 /*
@@ -181,37 +116,12 @@ void k_skip_whitespace(k_env_t *env, const char *source) {
 k_tokenable_t *k_get_tokenable(k_token_type_e type) {
     unsigned long i = 0;
 
-    for (i = 0; i < ARRAY_SIZE(_tokenables); i++) {
+    for (i = 0; i < _tokenables_length; i++) {
         if (_tokenables[i].type == type)
             return &_tokenables[i];
     }
 
     return (k_tokenable_t*)0x0;
-}
-
-/*
- *    Returns the identifier string.
- *
- *    @param const char *source    The source to get the identifier from.
- *    @param unsigned long index   The index to start at.
- *
- *    @return char *   The identifier string.
- */
-char *k_get_identifier(const char *source, unsigned long index) {
-    static char identifier[256];
-    unsigned long i = 0;
-
-    memset(identifier, 0, 256);
-
-    for (i = 0; i < 256; i++) {
-        if (source[index] == '\0' || source[index] == ' ' || source[index] == '\t' || source[index] == '\r' || source[index] == '\n')
-            break;
-
-        identifier[i] = source[index];
-        index++;
-    }
-
-    return identifier;
 }
 
 /*
@@ -245,7 +155,7 @@ unsigned long k_token_string_matches(k_token_t *token, const char *str, const ch
 k_tokenable_t *k_deduce_token_type(k_env_t *env, const char *source) {
     unsigned long i = 0;
 
-    for (i = 0; i < ARRAY_SIZE(_tokenables); i++) {
+    for (i = 0; i < _tokenables_length; i++) {
         if (_tokenables[i].chars == (const char*)0x0)
             continue;
 
@@ -328,9 +238,8 @@ void k_tokenize(k_env_t *env, const char *source) {
         lexer->tokens[i].column       = lexer->column;
         lexer->tokens[i].index        = lexer->index;
         lexer->tokens[i].tokenable    = k_deduce_token_type(env, source);
+        lexer->tokens[i].length       = strlen(k_parse_token(env, source));
         lexer->token_count            = ++i;
-
-        k_parse_token(env, source);
     } while (env->cur_token->tokenable->type != K_TOKEN_TYPE_EOF);
 }
 
@@ -354,6 +263,7 @@ void k_create_runtime(k_env_t *env, const char *source) {
     env->runtime->mem            = (char*)0x0;
     env->runtime->size           = 0;
     env->runtime->function_table = (k_function_t*)0x0;
+    env->runtime->function_count = 0;
 
     env->functions               = (k_interp_func_t*)0x0;
     env->function_count          = 0;
@@ -380,12 +290,12 @@ void k_lexical_analysis(k_env_t *env, const char *source) {
 
         if (tok->type == K_TOKEN_TYPE_IDENTIFIER) {
             /* Check if an identifier is a constant or a keyword.  */
-            const char *id = k_get_identifier(source, env->lexer->tokens[i].index);
+            const char *id = k_get_token_str(source, env->lexer->tokens[i].index, env->lexer->tokens[i].length);
 
             if (strchr(k_get_tokenable(K_TOKEN_TYPE_NUMBER)->chars, id[0]) != (char*)0x0) {
                 env->lexer->tokens[i].tokenable = k_get_tokenable(K_TOKEN_TYPE_NUMBER);
             } else {
-                for (unsigned long j = 0; j < ARRAY_SIZE(_keywords); j++) {
+                for (unsigned long j = 0; j < _keywords_length; j++) {
                     if (strcmp(id, _keywords[j]) == 0) {
                         env->lexer->tokens[i].tokenable = k_get_tokenable(K_TOKEN_TYPE_KEYWORD);
                         break;
