@@ -56,6 +56,7 @@ typedef struct {
     unsigned long          column;
     unsigned long          index;
     unsigned long          length;
+    char                  *str;
 } k_token_t;
 
 typedef struct {
@@ -82,40 +83,12 @@ typedef struct {
 } k_runtime_t;
 
 typedef struct {
-    char          *name;
-    unsigned long  index;
-} k_interp_func_t;
-
-typedef struct {
-    char         *name;
-    char         *value;
-    char         *type;
-    unsigned long size;
-} k_interp_var_t;
-
-typedef struct k_interp_scope_s {
-    k_interp_var_t   *vars;
-    unsigned long     var_count;
-
-    struct k_interp_scope_s *prev;
-    struct k_interp_scope_s *next;
-} k_interp_scope_t;
-
-typedef struct {
     k_lexer_t      *lexer;
     k_runtime_t    *runtime;
     k_token_t      *cur_token;
     k_token_type_e  cur_type;
     k_function_t   *cur_function;
-    void          (*error)(const char *msg);
-
-    k_interp_var_t    ret;
-
-    k_interp_func_t  *functions;
-    unsigned long     function_count;
-    k_interp_var_t   *globals;
-    unsigned long     global_count;
-    k_interp_scope_t *scope;
+    void          (*log)(const char *msg);
 } k_env_t;
 
 typedef enum {
@@ -136,7 +109,7 @@ k_env_t *k_new_env(void);
  *    @param k_env_t *env                      The environment to set the error handler for.
  *    @param void (*error)(const char *msg)    The error handler.
  */
-void k_set_error_handler(k_env_t *env, void (*error)(const char *msg));
+void k_set_log_handler(k_env_t *env, void (*error)(const char *msg));
 
 /*
  *    Parses a KAPPA source file.

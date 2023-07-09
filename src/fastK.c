@@ -31,23 +31,23 @@ k_env_t *k_new_env(void) {
 
     env->lexer     = (k_lexer_t*)0x0;
     env->runtime   = (k_runtime_t*)0x0;
-    env->error     = (void (*)(const char*))0x0;
+    env->log     = (void (*)(const char*))0x0;
     env->cur_token = (k_token_t*)0x0;
 
     return env;
 }
 
 /*
- *    Sets the error handler for a KAPPA environment.
+ *    Sets the log handler for a KAPPA environment.
  *
  *    @param k_env_t *env                      The environment to set the error handler for.
- *    @param void (*error)(const char *msg)    The error handler.
+ *    @param void (*log)(const char *msg)      The error handler.
  */
-void k_set_error_handler(k_env_t *env, void (*error)(const char *msg)) {
+void k_set_log_handler(k_env_t *env, void (*log)(const char *msg)) {
     if (env == (k_env_t*)0x0)
         return;
 
-    env->error = error;
+    env->log = log;
 }
 
 /*
@@ -163,7 +163,7 @@ k_tokenable_t *k_deduce_token_type(k_env_t *env, const char *source) {
             return &_tokenables[i];
     }
 
-    env->error(k_get_error(env, "Unknown token"));
+    env->log(k_get_error(env, "Unknown token"));
 
     return k_get_tokenable(K_TOKEN_TYPE_UNKNOWN);
 }
@@ -264,12 +264,6 @@ void k_create_runtime(k_env_t *env, const char *source) {
     env->runtime->size           = 0;
     env->runtime->function_table = (k_function_t*)0x0;
     env->runtime->function_count = 0;
-
-    env->functions               = (k_interp_func_t*)0x0;
-    env->function_count          = 0;
-    env->globals                 = (k_interp_var_t*)0x0;
-    env->global_count            = 0;
-    env->scope                   = (k_interp_scope_t*)0x0;
 }
 
 /*

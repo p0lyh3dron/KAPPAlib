@@ -338,7 +338,7 @@ void k_compile(k_env_t *env, const char *source) {
                 break;
             case K_ERROR_UNEXPECTED_TOKEN:
                 char *token = k_get_token_str(source, env->cur_token->index, env->cur_token->length);
-                env->error(k_get_error(env, "Unexpected token %s", token));
+                env->log(k_get_error(env, "Unexpected token %s", token));
                 k_advance_token(env);
                 break;
         }
