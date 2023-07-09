@@ -42,6 +42,10 @@ int main() {
 
     free(source);
 
+    unsigned long (*fib)(void) = (unsigned long (*)(void))env->runtime->function_table[0].source;
+
+    printf("fib(10) = %lu\n", fib());
+
     k_destroy_env(env);
     
     return 0;

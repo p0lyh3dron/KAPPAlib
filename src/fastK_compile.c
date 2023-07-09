@@ -10,8 +10,12 @@
  */
 #include "fastK.h"
 
+#include <sys/mman.h>
+
 #include "builtin.h"
 #include "util.h"
+
+#include "fastK_assemble.h"
 
 unsigned long   _var_size      = 0;
 
@@ -91,9 +95,10 @@ void k_compile_expression(k_env_t *env, const char *source) {
         prev = env->cur_token;
 
         if (*type == K_TOKEN_TYPE_NUMBER) {
-            k_advance_token(env);
-
             /* Set LH value to integer, and advance token  */
+            k_generate_put_integer(env, atoi(k_get_token_str(source, env->cur_token->index, env->cur_token->length)));
+
+            k_advance_token(env);
         }
 
         if (*type == K_TOKEN_TYPE_STRING) {
@@ -103,9 +108,10 @@ void k_compile_expression(k_env_t *env, const char *source) {
         }
 
         if (*type == K_TOKEN_TYPE_IDENTIFIER) {
-            k_advance_token(env);
-
             /* Set LH value to value pointed to by identifier.  */
+            k_generate_move(env, 'a', k_get_local(k_get_token_str(source, env->cur_token->index, env->cur_token->length)));
+
+            k_advance_token(env);
         }
 
         if (*type == K_TOKEN_TYPE_NEWEXPRESSION) {
@@ -136,17 +142,27 @@ void k_compile_expression(k_env_t *env, const char *source) {
 
         if (*type == K_TOKEN_TYPE_OPERATOR) {
             const char *op  = k_get_token_str(source, env->cur_token->index, env->cur_token->length);
-            k_token_t  *var = env->cur_token - 1;
+            k_token_t  *lh = env->cur_token - 1;
             k_advance_token(env);
 
             if (strcmp(op, "=") == 0) {
                 k_compile_expression(env, source);
-                k_generate_assignment(env, k_get_local(k_get_token_str(source, var->index, var->length)));
+
+                /* Assembly generated should put arithmetic register into local address. */
+                k_generate_assignment(env, k_get_local(k_get_token_str(source, lh->index, lh->length)));
             } else if (strcmp(op, "+") == 0) {
+                /* 
+                 *    LH should be already in arithmetic register, 
+                 *    so we'll move into another register, and then 
+                 *    add to arithmetic register after compiling the next expression. 
+                 */
+                k_generate_put_rax_rcx(env);
                 k_compile_expression(env, source);
-                k_generate_move(env, 'a', k_get_local(k_get_token_str(source, var->index, var->length)));
-                k_generate_move(env, 'b', k_get_local(k_get_token_str(source, env->cur_token->index, env->cur_token->length)));
                 k_generate_addition(env);
+            } else if (strcmp(op, "<") == 0) {
+                k_generate_put_rax_rcx(env);
+                k_compile_expression(env, source);
+                k_generate_comparison(env, K_CMP_L);
             }
             k_compile_expression(env, source);
         }
@@ -175,10 +191,16 @@ void k_compile_statement(k_env_t *env, const char *source) {
             if (k_token_string_matches(*tok, "return", source) == 0) {
                 k_advance_token(env);
                 k_compile_expression(env, source);
-            } else {
+                k_generate_return(env);
+            } else if (k_token_string_matches(*tok, "while", source) == 0) {
                 k_advance_token(env);
+                char *start = env->cur_function->source + env->cur_function->size;
                 k_compile_expression(env, source);
+                char *offset = k_generate_while(env);
                 k_compile_statement(env, source);
+                k_generate_jump(env, start);
+                char *address = (env->cur_function->source + env->cur_function->size - 0x25) - start;
+                memcpy(offset, &address, 4);
             }
         }
 
@@ -281,7 +303,16 @@ k_compile_error_t k_compile_global_declaration(k_env_t *env, const char *source)
         env->cur_function->source = (char *)0x0;
         env->cur_function->size   = 0;
 
+        k_generate_prelude(env);
+
         k_compile_statement(env, source);
+
+        void *exec = mmap(0, env->cur_function->size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+
+        memcpy(exec, env->cur_function->source, env->cur_function->size);
+
+        env->cur_function->source = exec;
+
     } else return K_ERROR_UNEXPECTED_TOKEN;
 
     return K_ERROR_NONE;
@@ -312,4 +343,6 @@ void k_compile(k_env_t *env, const char *source) {
                 break;
         }
     }
+
+    printf("%s\n", k_print_assembly(env));
 }
