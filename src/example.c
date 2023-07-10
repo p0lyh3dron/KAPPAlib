@@ -9,6 +9,7 @@
  *    interpreter.
  */
 #include <stdio.h>
+#include <stdlib.h>
 
 #include "fastK.h"
 

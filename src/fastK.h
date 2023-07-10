@@ -50,7 +50,7 @@ typedef struct {
 } k_tokenable_t;
 
 typedef struct {
-    k_tokenable_t         *tokenable;
+    const k_tokenable_t         *tokenable;
 
     unsigned long          line;
     unsigned long          column;
@@ -88,7 +88,7 @@ typedef struct {
     k_token_t      *cur_token;
     k_token_type_e  cur_type;
     k_function_t   *cur_function;
-    void          (*log)(const char *msg);
+    int           (*log)(const char *msg);
 } k_env_t;
 
 typedef enum {
@@ -107,9 +107,9 @@ k_env_t *k_new_env(void);
  *    Sets the error handler for a KAPPA environment.
  *
  *    @param k_env_t *env                      The environment to set the error handler for.
- *    @param void (*error)(const char *msg)    The error handler.
+ *    @param int (*error)(const char *msg)     The error handler.
  */
-void k_set_log_handler(k_env_t *env, void (*error)(const char *msg));
+void k_set_log_handler(k_env_t *env, int (*error)(const char *msg));
 
 /*
  *    Parses a KAPPA source file.

@@ -10,12 +10,16 @@
  */
 #include "fastK.h"
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
 #include <sys/mman.h>
 
 #include "builtin.h"
 #include "util.h"
 
 #include "fastK_assemble.h"
+#include "fastK_parse.h"
 
 unsigned long   _var_size      = 0;
 
@@ -199,7 +203,7 @@ void k_compile_statement(k_env_t *env, const char *source) {
                 char *offset = k_generate_while(env);
                 k_compile_statement(env, source);
                 k_generate_jump(env, start);
-                char *address = (env->cur_function->source + env->cur_function->size - 0x25) - start;
+                long int address = (env->cur_function->source + env->cur_function->size - 0x25) - start;
                 memcpy(offset, &address, 4);
             }
         }
