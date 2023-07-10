@@ -8,12 +8,12 @@
  *    Builtin types include integers, floats, strings, etc
  *    Operators include most of the C operators
  */
-#ifndef K_BUILTIN_H
-#define K_BUILTIN_H
+#ifndef _LIBK_BUILTIN_H
+#define _LIBK_BUILTIN_H
 
-#include "fastK.h"
+#include "types.h"
 
-extern const k_tokenable_t _tokenables[];
+extern const _k_tokenable_t _tokenables[];
 
 extern unsigned long _tokenables_length;
 
@@ -27,4 +27,4 @@ extern unsigned long _types_length;
 
 extern const unsigned long _type_lengths[];
 
-#endif /* K_BUILTIN_H  */
+#endif /* _LIBK_BUILTIN_H  */

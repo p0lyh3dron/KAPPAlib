@@ -11,7 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "fastK.h"
+#include "libk.h"
 
 int main() {
     FILE *fp = fopen("fib.k", "r");
@@ -39,7 +39,7 @@ int main() {
 
     k_set_log_handler(env, puts);
 
-    k_parse(env, source);
+    k_build(env, source);
 
     free(source);
 

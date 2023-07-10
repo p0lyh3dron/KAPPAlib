@@ -1,5 +1,5 @@
 /*
- *    fastK_assemble.c    --    Source for KAPPA assembly
+ *    libk_assemble.c    --    Source for KAPPA assembly
  *
  *    Authored by Karl "p0lyh3dron" Kreuze on July 2, 2023
  * 
@@ -7,7 +7,7 @@
  * 
  *    This file defines functions for assembling KAPPA source code.
  */
-#include "fastK.h"
+#include "libk.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,14 +15,14 @@
 
 #include "util.h"
 
-#include "fastK_assemble.h"
+#include "libk_assemble.h"
 
 /*
  *    Generates the assembly for the prelude.
  *
  *    @param k_env_t *env    The environment to generate the prelude for.
  */
-void k_generate_prelude(k_env_t *env) {
+void _k_generate_prelude(k_env_t *env) {
     /*
      *     55            push rbp
      *     48 89 E5      mov  rbp, rsp
@@ -42,7 +42,7 @@ void k_generate_prelude(k_env_t *env) {
  *    @param k_env_t *env           The environment to generate the assignment for.
  *    @param unsigned long offset   The offset of the variable to assign to.
  */
-void k_generate_assignment(k_env_t *env, unsigned long offset) {
+void _k_generate_assignment(k_env_t *env, unsigned long offset) {
     /*
      *     48 89 85 00 00 00 01   mov  [rbp + offset], rax
      */
@@ -67,7 +67,7 @@ void k_generate_assignment(k_env_t *env, unsigned long offset) {
  *    @param char reg        The register to move into.
  *    @param unsigned long   The offset of the variable to move.
  */
-void k_generate_move(k_env_t *env, char reg, unsigned long offset) {
+void _k_generate_move(k_env_t *env, char reg, unsigned long offset) {
     /*
      *     48 8B 85 00 00 00 01   mov  reg, [rbp + offset]
      */
@@ -91,7 +91,7 @@ void k_generate_move(k_env_t *env, char reg, unsigned long offset) {
  *    @param k_env_t *env        The environment to generate assembly for.
  *    @param long     integer    The integer to put into rax.
  */
-void k_generate_put_integer(k_env_t *env, long integer) {
+void _k_generate_put_integer(k_env_t *env, long integer) {
     /*
      *    48 C7 C0 00 00 00 00    mov rax, integer
      */
@@ -113,7 +113,7 @@ void k_generate_put_integer(k_env_t *env, long integer) {
  *
  *    @param k_env_t *env    The environment to generate assembly for.
  */
-void k_generate_put_rax_rcx(k_env_t *env) {
+void _k_generate_put_rax_rcx(k_env_t *env) {
     /*
      *    48 89 C1    mov rcx, rax
      */
@@ -131,7 +131,7 @@ void k_generate_put_rax_rcx(k_env_t *env) {
  *
  *    @param k_env_t *env    The environment to generate the addition for.
  */
-void k_generate_addition(k_env_t *env) {
+void _k_generate_addition(k_env_t *env) {
     /*
      *     48 01 C0   add  rax, rcx
      */
@@ -148,9 +148,9 @@ void k_generate_addition(k_env_t *env) {
  *    Generates assembly for a comparison.
  *
  *    @param k_env_t *env    The environment to generate the comparison for.
- *    @param k_cmp_e cmp     The comparison to generate.
+ *    @param _k_cmp_e cmp     The comparison to generate.
  */
-void k_generate_comparison(k_env_t *env, k_cmp_e cmp) {
+void _k_generate_comparison(k_env_t *env, _k_cmp_e cmp) {
     /*
      *     48 39 C1   cmp  rcx, rasx
      */
@@ -165,37 +165,37 @@ void k_generate_comparison(k_env_t *env, k_cmp_e cmp) {
     const char *set = (const char*)0x0;
 
     switch (cmp) {
-        case K_CMP_E:
+        case _K_CMP_E:
             /*
              *     0F 94 C0   sete al
              */
             set = "\x0F\x94\xC0";
             break;
-        case K_CMP_NE:
+        case _K_CMP_NE:
             /*
              *     0F 95 C0   setne al
              */
             set = "\x0F\x95\xC0";
             break;
-        case K_CMP_L:
+        case _K_CMP_L:
             /*
              *     0F 9C C0   setl al
              */
             set = "\x0F\x9C\xC0";
             break;
-        case K_CMP_LE:
+        case _K_CMP_LE:
             /*
              *     0F 9E C0   setle al
              */
             set = "\x0F\x9E\xC0";
             break;
-        case K_CMP_G:
+        case _K_CMP_G:
             /*
              *     0F 9F C0   setg al
              */
             set = "\x0F\x9F\xC0";
             break;
-        case K_CMP_GE:
+        case _K_CMP_GE:
             /*
              *     0F 9D C0   setge al
              */
@@ -228,7 +228,7 @@ void k_generate_comparison(k_env_t *env, k_cmp_e cmp) {
  * 
  *    @return char *         The address of the je offset.
  */
-char *k_generate_while(k_env_t *env) {
+char *_k_generate_while(k_env_t *env) {
     /*
      *    48 83 F8 00          cmp rax, 0
      *    0F 84 00 00 00 00    je  end
@@ -254,7 +254,7 @@ char *k_generate_while(k_env_t *env) {
  *    @param k_env_t *env    The environment to generate the jump for.
  *    @param char *address   The address to jump to.
  */
-void k_generate_jump(k_env_t *env, char *address) {
+void _k_generate_jump(k_env_t *env, char *address) {
     /*
      *    E9 00 00 00 00    jmp address
      */
@@ -280,7 +280,7 @@ void k_generate_jump(k_env_t *env, char *address) {
  *
  *    @param k_env_t *env    The environment to generate the return for.
  */
-void k_generate_return(k_env_t *env) {
+void _k_generate_return(k_env_t *env) {
     /*
      *    48 89 EC    mov rsp, rbp
      *    5D          pop rbp
@@ -302,7 +302,7 @@ void k_generate_return(k_env_t *env) {
  * 
  *    @return char *         The assembly bytestream.
  */
-char *k_print_assembly(k_env_t *env) {
+char *_k_print_assembly(k_env_t *env) {
     char *assembly = malloc(env->cur_function->size * 3 + 1);
 
     for (unsigned long i = 0; i < env->cur_function->size; i++) {

@@ -8,7 +8,7 @@
  *    This file defines the utility functions for KAPPA parsing and
  *    interpretation.
  */
-#include "fastK.h"
+#include "libk.h"
 
 #include <stdarg.h>
 #include <stdio.h>
@@ -24,7 +24,7 @@
  * 
  *    @return const char *   The current error.
  */
-const char *k_get_error(k_env_t *env, const char *msg, ...) {
+const char *_k_get_error(k_env_t *env, const char *msg, ...) {
     static char error[256];
     static char buffer[256];
 
@@ -50,7 +50,7 @@ const char *k_get_error(k_env_t *env, const char *msg, ...) {
  *
  *    @return char *   The identifier string.
  */
-char *k_get_token_str(const char *source, unsigned long index, unsigned long length) {
+char *_k_get_token_str(const char *source, unsigned long index, unsigned long length) {
     static char identifier[256];
     unsigned long i = 0;
 
@@ -69,7 +69,7 @@ char *k_get_token_str(const char *source, unsigned long index, unsigned long len
  *
  *    @param unsigned int *a    The integer.
  */
-void swap_endian32(unsigned int *a) {
+void _swap_endian32(unsigned int *a) {
     *a = ((*a >> 24) & 0x000000FF) | ((*a >> 8) & 0x0000FF00) |
          ((*a << 8) & 0x00FF0000) | ((*a << 24) & 0xFF000000);
 }

@@ -1,5 +1,5 @@
 /*
- *    fastK_compile.h    --    Header for KAPPA compilation
+ *    libk_compile.h    --    Header for KAPPA compilation
  *
  *    Authored by Karl "p0lyh3dron" Kreuze on July 9, 2023
  * 
@@ -7,10 +7,10 @@
  * 
  *    This file declares the functions used to compile KAPPA source code.
  */
-#ifndef FASTK_COMPILE_H
-#define FASTK_COMPILE_H
+#ifndef _LIBK_COMPILE_H
+#define _LIBK_COMPILE_H
 
-#include "fastK.h"
+#include "types.h"
 
 /*
  *    Deduces the size of a variable.
@@ -19,7 +19,7 @@
  * 
  *    @return unsigned long      The size of the variable.
  */
-unsigned long k_deduce_size(const char *type);
+unsigned long _k_deduce_size(const char *type);
 
 /*
  *    Adds a local variable to the compiler environment.
@@ -28,7 +28,7 @@ unsigned long k_deduce_size(const char *type);
  *
  *    @return unsigned long    The offset of the variable.
  */
-unsigned long k_add_local(const char *name);
+unsigned long _k_add_local(const char *name);
 
 /*
  *    Gets the offset of a local variable.
@@ -37,7 +37,7 @@ unsigned long k_add_local(const char *name);
  * 
  *    @return unsigned long      The offset of the variable.
  */
-unsigned long k_get_local(const char *name);
+unsigned long _k_get_local(const char *name);
 
 /*
  *    Compiles an expression.
@@ -45,7 +45,7 @@ unsigned long k_get_local(const char *name);
  *    @param k_env_t    *env       The environment to parse the expression in.
  *    @param const char *source    The source to parse the expression from.
  */
-void k_compile_expression(k_env_t *env, const char *source);
+void _k_compile_expression(k_env_t *env, const char *source);
 
 /*
  *    Compiles a statement.
@@ -53,7 +53,7 @@ void k_compile_expression(k_env_t *env, const char *source);
  *    @param k_env_t    *env       The environment to parse the statement in.
  *    @param const char *source    The source to parse the statement from.
  */
-void k_compile_statement(k_env_t *env, const char *source);
+void _k_compile_statement(k_env_t *env, const char *source);
 
 /*
  *    Compiles a global declaration.
@@ -62,13 +62,14 @@ void k_compile_statement(k_env_t *env, const char *source);
  * 
  *    @return k_compile_error_t    The error code, if any.
  */
-k_compile_error_t k_compile_global_declaration(k_env_t *env, const char *source);
+k_compile_error_t _k_compile_global_declaration(k_env_t *env, const char *source);
+
 /*
  *    Compiles a KAPPA source file.
  *
  *    @param k_env_t    *env       The environment to compile the source in.
  *    @param const char *source    The source to compile.
  */
-void k_compile(k_env_t *env, const char *source);
+void _k_compile(k_env_t *env, const char *source);
 
-#endif /* FASTK_COMPILE_H  */
+#endif /* _LIBK_COMPILE_H  */

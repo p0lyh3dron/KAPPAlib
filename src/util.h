@@ -8,8 +8,8 @@
  *    The declarations for utility functions for KAPPA parsing and
  *    interpretation are contained in this file.
  */
-#ifndef UTIL_H
-#define UTIL_H
+#ifndef _LIBK_UTIL_H
+#define _LIBK_UTIL_H
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof(x[0]))
 
@@ -22,7 +22,7 @@
  * 
  *    @return const char *   The current error.
  */
-const char *k_get_error(k_env_t *env, const char *msg, ...);
+const char *_k_get_error(k_env_t *env, const char *msg, ...);
 
 /*
  *    Returns the identifier string.
@@ -33,13 +33,13 @@ const char *k_get_error(k_env_t *env, const char *msg, ...);
  *
  *    @return char *   The identifier string.
  */
-char *k_get_token_str(const char *source, unsigned long index, unsigned long length);
+char *_k_get_token_str(const char *source, unsigned long index, unsigned long length);
 
 /*
  *    Swaps the endianness of a 4-byte integer.
  *
  *    @param unsigned int *a    The integer.
  */
-void swap_endian32(unsigned int *a);
+void _swap_endian32(unsigned int *a);
 
-#endif /* UTIL_H  */
+#endif /* _LIBK_UTIL_H  */
