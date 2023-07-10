@@ -31,6 +31,9 @@ void _k_advance_lexer(k_env_t *env) {
  *    @param k_env_t    *env       The environment to advance the lexer in.
  */
 void _k_advance_token(k_env_t *env) {
+    if (env->cur_token->tokenable->type == _K_TOKEN_TYPE_EOF)
+        return;
+
     env->cur_token += 1;
 
     env->cur_type  = env->cur_token->tokenable->type;
@@ -57,7 +60,8 @@ void _k_skip_whitespace(k_env_t *env, const char *source) {
     unsigned long *index = &env->lexer->index;
     _k_lexer_t     *lexer = env->lexer;
 
-    while (source[*index] == ' '  || source[*index] == '\t' || source[*index] == '\r' || source[*index] == '\n') {
+    while (source[*index] == ' '  || source[*index] == '\t' || 
+           source[*index] == '\r' || source[*index] == '\n') {
         if (source[*index] == '\n') {
             lexer->line++;
             lexer->index++;
@@ -139,36 +143,32 @@ const _k_tokenable_t *_k_deduce_token_type(k_env_t *env, const char *source) {
  *    @param k_env_t    *env       The environment to parse the token in.
  *    @param const char *source    The source to parse the token in.
  * 
- *    @return const char *    The parsed token.
+ *    @return char *    The parsed token.
  */
-const char *_k_parse_token(k_env_t *env, const char *source) {
-    static char    token[1024];
-    unsigned long  i         = 0;
-    unsigned long *idx       = &env->lexer->index;
+char *_k_parse_token(k_env_t *env, const char *source) {
+    unsigned long  i          = 0;
+    unsigned long *idx        = &env->lexer->index;
     const _k_tokenable_t *tok = env->cur_token->tokenable;
-
-    memset(token, 0, sizeof(token));
 
     switch (tok->terminatable) {
         case _K_TOKEN_TERMINATABLE_UNKNOWN:
             _k_advance_lexer(env);
 
-            return (const char*)0x0;
+            return (char*)0x0;
         case _K_TOKEN_TERMINATABLE_SINGLE:
-            token[0] = source[*idx];
-
+            i++;
             _k_advance_lexer(env);
             break;
         case _K_TOKEN_TERMINATABLE_MULTIPLE:
             do {
-                token[i++] = source[*idx];
+                i++;
 
                 _k_advance_lexer(env);
             } while (strchr(tok->chars, source[*idx]) != (char*)0x0);
             break;
         case _K_TOKEN_TERMINATABLE_REOCCUR:
             do {
-                token[i++] = source[*idx];
+                i++;
 
                 _k_advance_lexer(env);
             } while (source[*idx] != tok->chars[0]);
@@ -176,7 +176,7 @@ const char *_k_parse_token(k_env_t *env, const char *source) {
             break;
     }
 
-    return token;
+    return strndup(&source[*idx - i], i);
 }
 
 /*
@@ -203,7 +203,7 @@ void _k_tokenize(k_env_t *env, const char *source) {
         lexer->tokens[i].column       = lexer->column;
         lexer->tokens[i].index        = lexer->index;
         lexer->tokens[i].tokenable    = _k_deduce_token_type(env, source);
-        lexer->tokens[i].length       = strlen(_k_parse_token(env, source));
+        lexer->tokens[i].str          = _k_parse_token(env, source);
         lexer->token_count            = ++i;
     } while (env->cur_token->tokenable->type != _K_TOKEN_TYPE_EOF);
 }
@@ -238,25 +238,31 @@ void _k_create_runtime(k_env_t *env, const char *source) {
  *    @param const char *source    The source to perform lexical analysis on.
  */
 void _k_lexical_analysis(k_env_t *env, const char *source) {
-    unsigned long        new_token_count = 0;
+    unsigned long        new_token_count  = 0;
     _k_token_t           *new_tokens      = (_k_token_t *)0x0;
-    const _k_tokenable_t *tok             = (const _k_tokenable_t*)0x0;
+    const _k_tokenable_t **tok            = (const _k_tokenable_t**)0x0;
 
     _k_tokenize(env, source);
 
+    env->cur_token = &env->lexer->tokens[0];
+
     for (unsigned long i = 0; i < env->lexer->token_count; i++) {
-        tok = env->lexer->tokens[i].tokenable;
+        tok = &env->cur_token->tokenable;
 
-        if (tok->type == _K_TOKEN_TYPE_IDENTIFIER) {
+        if ((*tok)->type == _K_TOKEN_TYPE_IDENTIFIER) {
             /* Check if an identifier is a constant or a keyword.  */
-            const char *id = _k_get_token_str(source, env->lexer->tokens[i].index, env->lexer->tokens[i].length);
+            const char *id = _k_get_token_str(env);
 
+            /* Numerical constant.  */
             if (strchr(_k_get_tokenable(_K_TOKEN_TYPE_NUMBER)->chars, id[0]) != (char*)0x0) {
-                env->lexer->tokens[i].tokenable = _k_get_tokenable(_K_TOKEN_TYPE_NUMBER);
-            } else {
+                *tok = _k_get_tokenable(_K_TOKEN_TYPE_NUMBER);
+            } 
+            
+            /* Reserved keyword. */
+            else {
                 for (unsigned long j = 0; j < _keywords_length; j++) {
                     if (strcmp(id, _keywords[j]) == 0) {
-                        env->lexer->tokens[i].tokenable = _k_get_tokenable(_K_TOKEN_TYPE_KEYWORD);
+                        *tok = _k_get_tokenable(_K_TOKEN_TYPE_KEYWORD);
                         break;
                     }
                 }
@@ -264,11 +270,13 @@ void _k_lexical_analysis(k_env_t *env, const char *source) {
         }
 
         /* Remove comments from the token stream.  */
-        if (tok->type != _K_TOKEN_TYPE_COMMENT) {
+        if ((*tok)->type != _K_TOKEN_TYPE_COMMENT) {
             new_tokens = realloc(new_tokens, (new_token_count + 1) * sizeof(_k_token_t));
-            new_tokens[new_token_count] = env->lexer->tokens[i];
+            new_tokens[new_token_count] = *env->cur_token;
             new_token_count++;
         }
+
+        _k_advance_token(env);
     }
 
     free(env->lexer->tokens);

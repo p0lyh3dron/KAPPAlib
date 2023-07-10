@@ -98,77 +98,88 @@ void _k_compile_expression(k_env_t *env, const char *source) {
     do {
         prev = env->cur_token;
 
-        if (*type == _K_TOKEN_TYPE_NUMBER) {
-            /* Set LH value to integer, and advance token  */
-            _k_generate_put_integer(env, atoi(_k_get_token_str(source, env->cur_token->index, env->cur_token->length)));
-
-            _k_advance_token(env);
-        }
-
-        if (*type == _K_TOKEN_TYPE_STRING) {
-            _k_advance_token(env);
-            
-            /* Set LH value to string.  */
-        }
-
-        if (*type == _K_TOKEN_TYPE_IDENTIFIER) {
-            /* Set LH value to value pointed to by identifier.  */
-            _k_generate_move(env, 'a', _k_get_local(_k_get_token_str(source, env->cur_token->index, env->cur_token->length)));
-
-            _k_advance_token(env);
-        }
-
-        if (*type == _K_TOKEN_TYPE_NEWEXPRESSION) {
-            _k_advance_token(env);
-            /*
-             *    If LH is an identifier, it's a function call.
-             *    Otherwise, it's a parenthesized expression.
-             */
-            if (prev->tokenable->type == _K_TOKEN_TYPE_IDENTIFIER) {
-
-            }
-            else {
-                _k_compile_expression(env, source);
-                if (*type == _K_TOKEN_TYPE_ENDEXPRESSION) {
-                    _k_advance_token(env);
-                } else return;
-            }
-        }
-
-        if (*type == _K_TOKEN_TYPE_NEWINDEX) {
-            /* Array access e.g.  identifier[var1]  */
-            _k_advance_token(env);
-
-            if (prev->tokenable->type == _K_TOKEN_TYPE_IDENTIFIER) {
+        switch (*type) {
+            case _K_TOKEN_TYPE_NUMBER:
+                /* Set LH value to integer, and advance token  */
+                _k_assemble_mov_integer(env, atoi(_k_get_token_str(env)));
                 _k_advance_token(env);
-            } else return;
-        }
+                break;
 
-        if (*type == _K_TOKEN_TYPE_OPERATOR) {
-            const char *op  = _k_get_token_str(source, env->cur_token->index, env->cur_token->length);
-            _k_token_t  *lh = env->cur_token - 1;
-            _k_advance_token(env);
+            case _K_TOKEN_TYPE_STRING:
+                _k_advance_token(env);
+                /* Set LH value to string.  */
+                break;
 
-            if (strcmp(op, "=") == 0) {
+            case _K_TOKEN_TYPE_IDENTIFIER:
+                /* Set LH value to value pointed to by identifier.  */
+                _k_assemble_move(env, _k_get_local(_k_get_token_str(env)));
+                _k_advance_token(env);
+                break;
+
+            case _K_TOKEN_TYPE_NEWEXPRESSION:
+                _k_advance_token(env);
+                /*
+                *    If LH is an identifier, it's a function call.
+                *    Otherwise, it's a parenthesized expression.
+                */
+                if (prev->tokenable->type == _K_TOKEN_TYPE_IDENTIFIER) {
+                    /* Handle function call */
+                } else {
+                    _k_compile_expression(env, source);
+                    if (*type == _K_TOKEN_TYPE_ENDEXPRESSION) {
+                        _k_advance_token(env);
+                    } else {
+                        return;
+                    }
+                }
+                break;
+
+            case _K_TOKEN_TYPE_NEWINDEX:
+                /* Array access e.g.  identifier[var1]  */
+                _k_advance_token(env);
+                if (prev->tokenable->type == _K_TOKEN_TYPE_IDENTIFIER) {
+                    _k_advance_token(env);
+                } else {
+                    return;
+                }
+                break;
+
+            case _K_TOKEN_TYPE_OPERATOR:
+                const char *op  = _k_get_token_str(env);
+                _k_token_t *lh  = env->cur_token - 1;
+                _k_advance_token(env);
+
+                if (strcmp(op, "=") == 0) {
+                    _k_compile_expression(env, source);
+                    
+                    /* Assembly generated should put arithmetic register into local address. */
+                    _k_assemble_assignment(env, _k_get_local(lh->str));
+                } 
+                
+                else if (strcmp(op, "+") == 0) {
+                    /* 
+                    *    LH should be already in arithmetic register, 
+                    *    so we'll move into another register, and then 
+                    *    add to arithmetic register after compiling the next expression. 
+                    */
+                    _k_assemble_mov_rcx_rax(env);
+                    _k_compile_expression(env, source);
+                    _k_assemble_addition(env);
+                } 
+                
+                else if (strcmp(op, "<") == 0) {
+                    _k_assemble_mov_rcx_rax(env);
+                    _k_compile_expression(env, source);
+                    _k_assemble_comparison(env, _K_CMP_L);
+                }
+
                 _k_compile_expression(env, source);
 
-                /* Assembly generated should put arithmetic register into local address. */
-                _k_generate_assignment(env, _k_get_local(_k_get_token_str(source, lh->index, lh->length)));
-            } else if (strcmp(op, "+") == 0) {
-                /* 
-                 *    LH should be already in arithmetic register, 
-                 *    so we'll move into another register, and then 
-                 *    add to arithmetic register after compiling the next expression. 
-                 */
-                _k_generate_put_rax_rcx(env);
-                _k_compile_expression(env, source);
-                _k_generate_addition(env);
-            } else if (strcmp(op, "<") == 0) {
-                _k_generate_put_rax_rcx(env);
-                _k_compile_expression(env, source);
-                _k_generate_comparison(env, _K_CMP_L);
-            }
-            _k_compile_expression(env, source);
+                break;
+
+            default:
+                /* Handle unknown token type */
+                break;
         }
     /* If it can't find anything to parse, we're probably no longer in expression land.  */
     } while (prev != env->cur_token);
@@ -187,53 +198,91 @@ void _k_compile_statement(k_env_t *env, const char *source) {
     _k_advance_token(env);
 
     do {
-        if (*type == _K_TOKEN_TYPE_NEWSTATEMENT) {
-            _k_compile_statement(env, source);
-        }
-
-        if (*type == _K_TOKEN_TYPE_KEYWORD) {
-            if (_k_token_string_matches(*tok, "return", source) == 0) {
-                _k_advance_token(env);
-                _k_compile_expression(env, source);
-                _k_generate_return(env);
-            } else if (_k_token_string_matches(*tok, "while", source) == 0) {
-                _k_advance_token(env);
-                char *start = env->cur_function->source + env->cur_function->size;
-                _k_compile_expression(env, source);
-                char *offset = _k_generate_while(env);
+        switch (*type) {
+            case _K_TOKEN_TYPE_NEWSTATEMENT:
                 _k_compile_statement(env, source);
-                _k_generate_jump(env, start);
-                long int address = (env->cur_function->source + env->cur_function->size - 0x25) - start;
-                memcpy(offset, &address, 4);
-            }
-        }
+                break;
 
-        if (*type == _K_TOKEN_TYPE_IDENTIFIER) {
-            _var_size = _k_deduce_size(_k_get_token_str(source, (*tok)->index, (*tok)->length));
+            case _K_TOKEN_TYPE_KEYWORD:
+                char *keyword = _k_get_token_str(env);
 
-            _k_advance_token(env);
-            
-            if (*type == _K_TOKEN_TYPE_DECLARATOR) {
+                if (strcmp(keyword, "return") == 0) {
+                    _k_advance_token(env);
+
+                    /* The final expression will already be in RAX, easy as pie.  */
+                    _k_compile_expression(env, source);
+                    _k_assemble_return(env);
+                } 
+                
+                else if (strcmp(keyword, "while") == 0) {
+                    _k_advance_token(env);
+
+                    /* Hold on to the start address.  */
+                    char *start = env->cur_function->source + env->cur_function->size;
+
+                    /* Create while condition.  */
+                    _k_compile_expression(env, source);
+                    
+                    /* Address to write jump into after statement.  */
+                    char *offset = _k_assemble_while(env);
+
+                    /* Write statement and jump to check condition again. */
+                    _k_compile_statement(env, source);
+                    _k_assemble_jump(env, start);
+
+                    /* Update initial condition bytecode with exit address.  */
+                    long int address = (env->cur_function->source + env->cur_function->size - 0x25) - start;
+                    memcpy(offset, &address, 4);
+
+                    continue;
+                }
+
+                break;
+
+            case _K_TOKEN_TYPE_IDENTIFIER:
+                /* Get size for stack allocation.  */
+                _var_size = _k_deduce_size(_k_get_token_str(env));
+
                 _k_advance_token(env);
 
-                _k_add_local(_k_get_token_str(source, (*tok)->index, (*tok)->length));
+                if (*type == _K_TOKEN_TYPE_DECLARATOR) {
+                    _k_advance_token(env);
+
+                    /* Hold on to stack offsets.  */
+                    _k_add_local(_k_get_token_str(env));
+
+                    /* Check for variable declaration.  */
+                    if (*type == _K_TOKEN_TYPE_IDENTIFIER) {
+                        char *id = _k_get_token_str(env);
+
+                        _k_advance_token(env);
+
+                        if (*type == _K_TOKEN_TYPE_OPERATOR) {
+                            if (strncmp(_k_get_token_str(env), "=", 2) != 0) {
+                                env->log(_k_get_error(env, "Expected assignment operator, got %s", _k_get_token_str(env)));
+                                return;
+                            }
+
+                            _k_advance_token(env);
+                            _k_compile_expression(env, source);
+                            _k_assemble_assignment(env, _k_get_local(id));
+                        }
+                    }
+                } 
                 
-                if (*type == _K_TOKEN_TYPE_IDENTIFIER) {
+                /* Wasn't a declaration, prepare to compile expression.  */
+                else _k_revert_token(env);
+
+            default:
+                _k_compile_expression(env, source);
+
+                if (*type == _K_TOKEN_TYPE_ENDLINE)
                     _k_advance_token(env);
                     
-                    if (*type == _K_TOKEN_TYPE_OPERATOR) {
-                        _k_advance_token(env);
-                        _k_compile_expression(env, source);
-                    }
-                }
-            } else _k_revert_token(env);
+                else return;
+
+                break;
         }
-
-        _k_compile_expression(env, source);
-
-        if (*type == _K_TOKEN_TYPE_ENDLINE) {
-            _k_advance_token(env);
-        } else return;
     } while (*type != _K_TOKEN_TYPE_ENDSTATEMENT);
 
     _k_advance_token(env);
@@ -247,12 +296,13 @@ void _k_compile_statement(k_env_t *env, const char *source) {
  *    @return k_compile_error_t    The error code, if any.
  */
 k_compile_error_t _k_compile_global_declaration(k_env_t *env, const char *source) {
-    unsigned long  i       = 0;
+    unsigned long    i      = 0;
     _k_token_type_e *type   = &env->cur_type;
+    char            *id     = (char *)0x0;
+    char            *param  = (char *)0x0;
 
-    while (*type == _K_TOKEN_TYPE_ENDLINE) {
+    while (*type == _K_TOKEN_TYPE_ENDLINE)
         _k_advance_token(env);
-    }
 
     if (*type == _K_TOKEN_TYPE_IDENTIFIER) {
         _k_advance_token(env);
@@ -263,6 +313,8 @@ k_compile_error_t _k_compile_global_declaration(k_env_t *env, const char *source
     } else return K_ERROR_UNEXPECTED_TOKEN;
 
     if (*type == _K_TOKEN_TYPE_IDENTIFIER) {
+        id = _k_get_token_str(env);
+
         _k_advance_token(env);
     } else return K_ERROR_UNEXPECTED_TOKEN;
 
@@ -274,15 +326,22 @@ k_compile_error_t _k_compile_global_declaration(k_env_t *env, const char *source
         if (*type == _K_TOKEN_TYPE_ENDLINE) {
             _k_advance_token(env);
         } else return K_ERROR_UNEXPECTED_TOKEN;
-    } else if (*type == _K_TOKEN_TYPE_ENDLINE) {
+
+    } 
+    
+    else if (*type == _K_TOKEN_TYPE_ENDLINE) {
         /* Global variable declaration without value.  */
         _k_advance_token(env);
-    } else if (*type == _K_TOKEN_TYPE_NEWEXPRESSION) {
+    } 
+    
+    else if (*type == _K_TOKEN_TYPE_NEWEXPRESSION) {
         /* Global function declaration.  */
         _k_advance_token(env);
         
         while (*type != _K_TOKEN_TYPE_ENDEXPRESSION) {
             if (*type == _K_TOKEN_TYPE_IDENTIFIER) {
+                _var_size = _k_deduce_size(_k_get_token_str(env));
+
                 _k_advance_token(env);
             } else return K_ERROR_UNEXPECTED_TOKEN;
 
@@ -291,6 +350,8 @@ k_compile_error_t _k_compile_global_declaration(k_env_t *env, const char *source
             } else return K_ERROR_UNEXPECTED_TOKEN;
 
             if (*type == _K_TOKEN_TYPE_IDENTIFIER) {
+                _k_add_local(_k_get_token_str(env));
+                
                 _k_advance_token(env);
             } else return K_ERROR_UNEXPECTED_TOKEN;
 
@@ -299,16 +360,17 @@ k_compile_error_t _k_compile_global_declaration(k_env_t *env, const char *source
             }
         }
 
+        _k_advance_token(env);
+
         env->runtime->function_table = realloc(env->runtime->function_table, sizeof(_k_function_t) * (env->runtime->function_count + 1));
 
         env->cur_function = &env->runtime->function_table[env->runtime->function_count++];
 
-        env->cur_function->name   = "TODO";
+        env->cur_function->name   = id;
         env->cur_function->source = (char *)0x0;
         env->cur_function->size   = 0;
 
-        _k_generate_prelude(env);
-
+        _k_assemble_prelude(env);
         _k_compile_statement(env, source);
 
         void *exec = mmap(0, env->cur_function->size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
@@ -341,7 +403,7 @@ void _k_compile(k_env_t *env, const char *source) {
             case K_ERROR_NONE:
                 break;
             case K_ERROR_UNEXPECTED_TOKEN:
-                char *token = _k_get_token_str(source, env->cur_token->index, env->cur_token->length);
+                char *token = _k_get_token_str(env);
                 env->log(_k_get_error(env, "Unexpected token %s", token));
                 _k_advance_token(env);
                 break;

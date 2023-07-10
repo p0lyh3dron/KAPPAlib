@@ -45,12 +45,11 @@ typedef struct {
 } _k_tokenable_t;
 
 typedef struct {
-    const _k_tokenable_t         *tokenable;
+    const _k_tokenable_t  *tokenable;
 
     unsigned long          line;
     unsigned long          column;
     unsigned long          index;
-    unsigned long          length;
     char                  *str;
 } _k_token_t;
 

@@ -42,26 +42,14 @@ const char *_k_get_error(k_env_t *env, const char *msg, ...) {
 }
 
 /*
- *    Returns the token string.
+ *    Returns the identifier string.
  *
- *    @param const char *source    The source to get the identifier from.
- *    @param unsigned long index   The index to start at.
- *    @param unsigned long length  The length of the identifier.
+ *    @param k_env_t *env       The environment to get the identifier from.
  *
  *    @return char *   The identifier string.
  */
-char *_k_get_token_str(const char *source, unsigned long index, unsigned long length) {
-    static char identifier[256];
-    unsigned long i = 0;
-
-    memset(identifier, 0, 256);
-
-    for (i = 0; i < length; i++) {
-        identifier[i] = source[index];
-        index++;
-    }
-
-    return identifier;
+char *_k_get_token_str(k_env_t *env) {
+    return env->cur_token->str;
 }
 
 /*

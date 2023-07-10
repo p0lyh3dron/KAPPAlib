@@ -78,9 +78,9 @@ const _k_tokenable_t *_k_deduce_token_type(k_env_t *env, const char *source);
  *    @param k_env_t    *env       The environment to parse the token in.
  *    @param const char *source    The source to parse the token in.
  * 
- *    @return const char *    The parsed token.
+ *    @return char *    The parsed token.
  */
-const char *_k_parse_token(k_env_t *env, const char *source);
+char *_k_parse_token(k_env_t *env, const char *source);
 
 /*
  *    Tokenizes a KAPPA source file.

@@ -42,6 +42,16 @@ void k_set_log_handler(k_env_t *env, int (*error)(const char *msg));
 void k_build(k_env_t *env, const char *source);
 
 /*
+ *    Returns a function pointer to a built function.
+ *
+ *    @param k_env_t    *env       The environment to get the function from.
+ *    @param const char *name      The name of the function.
+ * 
+ *    @return void *    The function pointer.
+ */
+void *k_get_function(k_env_t *env, const char *name);
+
+/*
  *    Destroys a KAPPA environment.
  *
  *    @param k_env_t *env    The environment to destroy.

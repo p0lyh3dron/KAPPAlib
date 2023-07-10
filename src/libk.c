@@ -82,6 +82,27 @@ void k_build(k_env_t *env, const char *source) {
 }
 
 /*
+ *    Returns a function pointer to a built function.
+ *
+ *    @param k_env_t    *env       The environment to get the function from.
+ *    @param const char *name      The name of the function.
+ * 
+ *    @return void *    The function pointer.
+ */
+void *k_get_function(k_env_t *env, const char *name) {
+    if (env == (k_env_t*)0x0 || name == (const char*)0x0)
+        return (void*)0x0;
+
+    for (unsigned long i = 0; i < env->runtime->function_count; i++) {
+        if (strcmp(env->runtime->function_table[i].name, name) == 0) {
+            return env->runtime->function_table[i].source;
+        }
+    }
+
+    return (void*)0x0;
+}
+
+/*
  *    Destroys a KAPPA environment.
  *
  *    @param k_env_t *env    The environment to destroy.
@@ -90,6 +111,9 @@ void k_destroy_env(k_env_t *env) {
     if (env != (k_env_t*)0x0) {
         if (env->lexer != (_k_lexer_t*)0x0) {
             if (env->lexer->tokens != (_k_token_t*)0x0) {
+                for (unsigned long i = 0; i < env->lexer->token_count; i++) {
+                    free(env->lexer->tokens[i].str);
+                }
                 free(env->lexer->tokens);
             }
             free(env->lexer);

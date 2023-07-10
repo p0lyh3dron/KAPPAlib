@@ -43,9 +43,9 @@ int main() {
 
     free(source);
 
-    unsigned long (*fib)(void) = (unsigned long (*)(void))env->runtime->function_table[0].source;
+    unsigned long (*fib)(unsigned long) = (unsigned long (*)(unsigned long))k_get_function(env, "fib");
 
-    printf("fib(10) = %lu\n", fib());
+    printf("fib(10) = %lu\n", fib(10));
 
     k_destroy_env(env);
     

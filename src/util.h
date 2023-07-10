@@ -27,13 +27,11 @@ const char *_k_get_error(k_env_t *env, const char *msg, ...);
 /*
  *    Returns the identifier string.
  *
- *    @param const char *source    The source to get the identifier from.
- *    @param unsigned long index   The index to start at.
- *    @param unsigned long length  The length of the identifier.
+ *    @param k_env_t *env       The environment to get the identifier from.
  *
  *    @return char *   The identifier string.
  */
-char *_k_get_token_str(const char *source, unsigned long index, unsigned long length);
+char *_k_get_token_str(k_env_t *env);
 
 /*
  *    Swaps the endianness of a 4-byte integer.
