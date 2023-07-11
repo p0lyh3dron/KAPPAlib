@@ -218,7 +218,7 @@ void _k_compile_statement(k_env_t *env, const char *source) {
                     _k_advance_token(env);
 
                     /* Hold on to the start address.  */
-                    char *start = env->cur_function->source + env->cur_function->size;
+                    unsigned long old = env->cur_function->size;
 
                     /* Create while condition.  */
                     _k_compile_expression(env, source);
@@ -228,10 +228,10 @@ void _k_compile_statement(k_env_t *env, const char *source) {
 
                     /* Write statement and jump to check condition again. */
                     _k_compile_statement(env, source);
-                    _k_assemble_jump(env, start);
+                    _k_assemble_jump(env, env->cur_function->source + old);
 
                     /* Update initial condition bytecode with exit address.  */
-                    long int address = (env->cur_function->source + env->cur_function->size - 0x25) - start;
+                    long int address = (env->cur_function->size - 0x25) - old;
                     memcpy(offset, &address, 4);
 
                     continue;
@@ -371,6 +371,11 @@ k_compile_error_t _k_compile_global_declaration(k_env_t *env, const char *source
         env->cur_function->size   = 0;
 
         _k_assemble_prelude(env);
+
+        for (i = 0; i < _local_count; i++) {
+            _k_assemble_parameter_store(env, _local_offsets[i], i);
+        }
+
         _k_compile_statement(env, source);
 
         void *exec = mmap(0, env->cur_function->size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);

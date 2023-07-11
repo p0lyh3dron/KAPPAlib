@@ -52,6 +52,17 @@ void k_build(k_env_t *env, const char *source);
 void *k_get_function(k_env_t *env, const char *name);
 
 /*
+ *    Calls a function via a wrapper.
+ *
+ *    @param k_env_t       *env       The environment to call the function in.
+ *    @param const char    *name      The name of the function.
+ *    @param void         **ret       The return value of the function.
+ *    @param void          *arg       The argument to pass to the function.
+ *    @param ...                       The rest of the arguments to pass to the function.
+ */
+void k_call_function(k_env_t *env, const char *name, void **ret, void *arg, ...);
+
+/*
  *    Destroys a KAPPA environment.
  *
  *    @param k_env_t *env    The environment to destroy.

@@ -17,6 +17,13 @@
 
 #include "libk_assemble.h"
 
+const char *_param_regs[] = {
+    "\x48\x89\xBD", /* RDI  */
+    "\x48\x89\xB5", /* RSI  */
+    "\x4C\x89\x85", /* R8   */
+    "\x4C\x89\x8D", /* R9   */
+};
+
 /*
  *    Appends bytecode to the current function.
  *
@@ -45,6 +52,38 @@ void _k_assemble_prelude(k_env_t *env) {
     const char *prelude = "\x55\x48\x89\xE5";
 
     _k_append_bytecode(env, (char *)prelude, 4);
+}
+
+/*
+ *    Generates a paremeter store for a function.
+ *
+ *    @param k_env_t *env    The environment to generate the parameter store for.
+ *    @param unsigned long   The offset of the parameter to store.
+ *    @param unsigned long   The current parameter index.
+ */
+void _k_assemble_parameter_store(k_env_t *env, unsigned long offset, unsigned long index) {
+    /*
+     *     48 89 BD 00 00 00 01   mov  [rbp + offset], reg
+     */
+    const char *store = _param_regs[index];
+    signed long offset_signed = 0xFFFFFFFF - offset + 1;
+
+    _k_append_bytecode(env, (char *)store, 3);
+    _k_append_bytecode(env, (char *)&offset_signed, 4);
+}
+
+/*
+ *    Pops the parameters off the stack.
+ *
+ *    @param k_env_t *env    The environment to pop the parameters for.
+ */
+void _k_assemble_pop_parameters(k_env_t *env) {
+    /*
+     *    58    pop rax
+     */
+    const char *pop = "\x58";
+
+    _k_append_bytecode(env, (char *)pop, 1);
 }
 
 /*

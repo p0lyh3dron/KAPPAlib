@@ -29,6 +29,22 @@ typedef enum {
 void _k_assemble_prelude(k_env_t *env);
 
 /*
+ *    Generates a paremeter store for a function.
+ *
+ *    @param k_env_t *env    The environment to generate the parameter store for.
+ *    @param unsigned long   The offset of the parameter to store.
+ *    @param unsigned long   The current parameter index.
+ */
+void _k_assemble_parameter_store(k_env_t *env, unsigned long offset, unsigned long index);
+
+/*
+ *    Pops the parameters off the stack.
+ *
+ *    @param k_env_t *env    The environment to pop the parameters for.
+ */
+void _k_assemble_pop_parameters(k_env_t *env);
+
+/*
  *    Generates assembly for an assignment.
  *
  *    @param k_env_t *env           The environment to generate the assignment for.
