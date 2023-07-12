@@ -78,6 +78,11 @@ typedef struct {
 } _k_variable_t;
 
 typedef struct {
+    _k_token_type_e     type;
+    k_compile_error_t (*compile)(k_env_t *env);
+} _k_grammar_t;
+
+typedef struct {
     char          *mem;
     unsigned long  size;
     _k_function_t  *function_table;
@@ -100,6 +105,10 @@ typedef struct {
 typedef enum {
     K_ERROR_NONE = 0,
     K_ERROR_UNEXPECTED_TOKEN,
+    K_ERROR_UNDECLARED_VARIABLE,
+    K_ERROR_UNDECLARED_TYPE,
+    K_ERROR_UNDECLARED_IDENTIFIER,
+    K_ERROR_INVALID_ENDEXPRESSION,
 } k_compile_error_t;
 
 #endif /* _LIBK_TYPES_H  */

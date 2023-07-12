@@ -25,6 +25,114 @@ unsigned long   _var_size      = 0;
 unsigned long   _base_offset   = 0;
 
 /*
+ *     Compiles a number.
+ *
+ *     @param k_env_t    *env       The environment to compile the number in.
+ * 
+ *     @return k_compile_error_t    The error code, if any.
+ */
+k_compile_error_t _k_compile_number(k_env_t *env) {
+    _k_assemble_mov_integer(env, atoi(env->cur_token->str));
+}
+
+/*
+ *     Compiles a string.
+ *
+ *     @param k_env_t    *env       The environment to compile the string in.
+ * 
+ *     @return k_compile_error_t    The error code, if any.
+ */
+k_compile_error_t _k_compile_string(k_env_t *env) {
+    _k_token_t *token = env->cur_token;
+
+    /* TODO  */
+    _k_assemble_mov_integer(env, 0xDEADBEEF);
+}
+
+/*
+ *     Compiles an identifier.
+ *
+ *     @param k_env_t    *env       The environment to compile the identifier in.
+ *
+ *     @return k_compile_error_t    The error code, if any.
+ */
+k_compile_error_t _k_compile_identifier(k_env_t *env) {
+    _k_variable_t *var = _k_get_var(env, env->cur_token->str);
+
+    if (var == (_k_variable_t *)0x0) {
+        env->log(_k_get_error(env, "Undefined variable or function: %s\n", env->cur_token->str));
+
+        return K_ERROR_UNDECLARED_VARIABLE;
+    }
+
+    /* If the variable is a function, we'll compile a function call.  */
+    if (var->flags & _K_VARIABLE_FLAG_FUNC) {
+        _k_advance_token(env);
+
+        /* Function call.  */
+        if (env->cur_type == _K_TOKEN_TYPE_NEWEXPRESSION) {
+            _k_advance_token(env);
+
+            unsigned long param_count = 0;
+
+            while (env->cur_type != _K_TOKEN_TYPE_ENDEXPRESSION) {
+                _k_compile_expression(env);
+
+                _k_assemble_parameter_store(env, var->offset, param_count++);
+
+                if (env->cur_type == _K_TOKEN_TYPE_SEPARATOR) {
+                    _k_advance_token(env);
+                }
+            }
+
+            _k_advance_token(env);
+
+            _k_assemble_call(env, _k_get_function(env, var->name));
+        }
+
+        /* Return the address of the function.  */
+        else _k_assemble_move(env, var->offset);
+    }
+
+    /* Set value to value pointed to by identifier.  */
+    else _k_assemble_move(env, var->offset);
+
+    return K_ERROR_NONE;
+}
+
+/*
+ *     Compiles a new expression.
+ *
+ *     @param k_env_t    *env       The environment to compile the new expression in.
+ *
+ *     @return k_compile_error_t    The error code, if any.
+ */
+k_compile_error_t _k_compile_new_expression(k_env_t *env) {
+    _k_advance_token(env);
+
+    _k_compile_expression(env);
+
+    if (env->cur_type == _K_TOKEN_TYPE_ENDEXPRESSION) {
+        _k_advance_token(env);
+    } else return K_ERROR_INVALID_ENDEXPRESSION;
+
+    return K_ERROR_NONE;
+}
+
+_k_grammar_t _expression_grammar[] = {
+    { _K_TOKEN_TYPE_NUMBER, _k_compile_number },
+    { _K_TOKEN_TYPE_STRING, _k_compile_string },
+    { _K_TOKEN_TYPE_IDENTIFIER, _k_compile_identifier },
+    { _K_TOKEN_TYPE_NEWEXPRESSION, _k_compile_new_expression },
+    { _K_TOKEN_TYPE_NEWINDEX, _k_compile_new_index },
+    { _K_TOKEN_TYPE_OPERATOR, _k_compile_operator },
+    { _K_TOKEN_TYPE_ENDLINE, _k_compile_endline },
+    { _K_TOKEN_TYPE_ENDSTATEMENT, _k_compile_endstatement },
+    { _K_TOKEN_TYPE_ENDINDEX, _k_compile_endindex },
+    { _K_TOKEN_TYPE_UNKNOWN, _k_compile_unknown },
+}
+
+/*
  *    Deduces the size of a variable.
  *
  *    @param const char *type    The type of the variable.
@@ -108,9 +216,8 @@ char *_k_get_function(k_env_t *env, const char *name) {
  *    Compiles an expression.
  *
  *    @param k_env_t    *env       The environment to parse the expression in.
- *    @param const char *source    The source to parse the expression from.
  */
-void _k_compile_expression(k_env_t *env, const char *source) {
+void _k_compile_expression(k_env_t *env) {
     _k_token_type_e *type      = &env->cur_type;
     _k_token_t      *prev      = env->cur_token;
 
