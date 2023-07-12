@@ -67,13 +67,25 @@ typedef struct {
     unsigned long  size;
 } _k_function_t;
 
+#define _K_VARIABLE_FLAG_FUNC 0x01
+
 typedef struct {
-    char          *data;
-    char          *ops;
+    char          *name;
+    char          *type;
+    unsigned long  offset;
+    unsigned long  size;
+    char           flags;
+} _k_variable_t;
+
+typedef struct {
     char          *mem;
     unsigned long  size;
     _k_function_t  *function_table;
     unsigned long  function_count;
+    _k_variable_t  *locals;
+    unsigned long  local_count;
+    _k_variable_t  *globals;
+    unsigned long  global_count;
 } _k_runtime_t;
 
 typedef struct {

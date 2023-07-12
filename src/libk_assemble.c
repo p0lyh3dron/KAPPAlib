@@ -17,11 +17,18 @@
 
 #include "libk_assemble.h"
 
-const char *_param_regs[] = {
+const char *_param_regs_str[] = {
     "\x48\x89\xBD", /* RDI  */
     "\x48\x89\xB5", /* RSI  */
     "\x4C\x89\x85", /* R8   */
     "\x4C\x89\x8D", /* R9   */
+};
+
+const char *_param_regs_ld[] = {
+    "\x48\x89\xC7", /* RDI  */
+    "\x48\x89\xC6", /* RSI  */
+    "\x49\x89\xC0", /* R8   */
+    "\x49\x89\xC1", /* R9   */
 };
 
 /*
@@ -65,11 +72,26 @@ void _k_assemble_parameter_store(k_env_t *env, unsigned long offset, unsigned lo
     /*
      *     48 89 BD 00 00 00 01   mov  [rbp + offset], reg
      */
-    const char *store = _param_regs[index];
+    const char *store = _param_regs_str[index];
     signed long offset_signed = 0xFFFFFFFF - offset + 1;
 
     _k_append_bytecode(env, (char *)store, 3);
     _k_append_bytecode(env, (char *)&offset_signed, 4);
+}
+
+/*
+ *    Generates a parameter load for a function.
+ *
+ *    @param k_env_t *env    The environment to generate the parameter load for.
+ *    @param unsigned long   The current parameter index.
+ */
+void _k_assemble_parameter_load(k_env_t *env, unsigned long index) {
+    /*
+     *     48 8B BD 00 00 00 01   mov  reg, rax
+     */
+    const char *load = _param_regs_ld[index];
+
+    _k_append_bytecode(env, (char *)load, 3);
 }
 
 /*
@@ -84,6 +106,23 @@ void _k_assemble_pop_parameters(k_env_t *env) {
     const char *pop = "\x58";
 
     _k_append_bytecode(env, (char *)pop, 1);
+}
+
+/*
+ *    Generates the assembly for a call.
+ *
+ *    @param k_env_t *env    The environment to generate the call for.
+ *    @param unsigned long   The offset of the function to call.
+ */
+void _k_assemble_call(k_env_t *env, unsigned long offset) {
+    /*
+     *    E8 00 00 00 00    call offset
+     */
+    const char *call = "\xE8";
+    signed long offset_signed = (signed)offset - (signed long)(env->cur_function->source + env->cur_function->size + 5);
+
+    _k_append_bytecode(env, (char *)call, 1);
+    _k_append_bytecode(env, (char *)&offset_signed, 4);
 }
 
 /*

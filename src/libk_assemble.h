@@ -38,11 +38,27 @@ void _k_assemble_prelude(k_env_t *env);
 void _k_assemble_parameter_store(k_env_t *env, unsigned long offset, unsigned long index);
 
 /*
+ *    Generates a parameter load for a function.
+ *
+ *    @param k_env_t *env    The environment to generate the parameter load for.
+ *    @param unsigned long   The current parameter index.
+ */
+void _k_assemble_parameter_load(k_env_t *env, unsigned long index);
+
+/*
  *    Pops the parameters off the stack.
  *
  *    @param k_env_t *env    The environment to pop the parameters for.
  */
 void _k_assemble_pop_parameters(k_env_t *env);
+
+/*
+ *    Generates the assembly for a call.
+ *
+ *    @param k_env_t *env    The environment to generate the call for.
+ *    @param unsigned long   The offset of the function to call.
+ */
+void _k_assemble_call(k_env_t *env, unsigned long offset);
 
 /*
  *    Generates assembly for an assignment.

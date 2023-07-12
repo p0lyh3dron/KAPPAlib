@@ -22,22 +22,33 @@
 unsigned long _k_deduce_size(const char *type);
 
 /*
- *    Adds a local variable to the compiler environment.
+ *    Adds a variable to the compiler environment.
  *
- *    @param char *name    The name of the variable.
- *
- *    @return unsigned long    The offset of the variable.
+ *    @param k_env_t       *env     The environment to add the variable to.
+ *    @param _k_variable_t *var     The variable to add.
+ *    @param char           global  Whether or not the variable is global.
  */
-unsigned long _k_add_local(const char *name);
+void _k_add_var(k_env_t *env, _k_variable_t *var, char global);
 
 /*
- *    Gets the offset of a local variable.
+ *    Gets a variable from the compiler environment.
  *
+ *    @param k_env_t    *env     The environment to get the variable from.
  *    @param const char *name    The name of the variable.
  * 
- *    @return unsigned long      The offset of the variable.
+ *    @return _k_variable_t *    The variable.
  */
-unsigned long _k_get_local(const char *name);
+_k_variable_t *_k_get_var(k_env_t *env, const char *name);
+
+/*
+ *    Gets the address of a function.
+ *
+ *    @param k_env_t    *env    The environment to get the function from.
+ *    @param const char *name    The name of the function.
+ *
+ *    @return char *      The address of the function.
+ */
+char *_k_get_function(k_env_t *env, const char *name);
 
 /*
  *    Compiles an expression.

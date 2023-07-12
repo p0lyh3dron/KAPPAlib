@@ -22,10 +22,6 @@
 #include "libk_parse.h"
 
 unsigned long   _var_size      = 0;
-
-char          **_locals        = (char **)0x0;
-unsigned long  *_local_offsets = (unsigned long *)0x0;
-unsigned long   _local_count   = 0;
 unsigned long   _base_offset   = 0;
 
 /*
@@ -46,43 +42,66 @@ unsigned long _k_deduce_size(const char *type) {
 }
 
 /*
- *    Adds a local variable to the compiler environment.
+ *    Adds a variable to the compiler environment.
  *
- *    @param char *name    The name of the variable.
- *
- *    @return unsigned long    The offset of the variable.
+ *    @param k_env_t       *env     The environment to add the variable to.
+ *    @param _k_variable_t *var     The variable to add.
+ *    @param char           global  Whether or not the variable is global.
  */
-unsigned long _k_add_local(const char *name) {
-    for (unsigned long i = 0; i < _local_count; i++) {
-        if (strcmp(_locals[i], name) == 0) {
-            return _local_offsets[i];
-        }
+void _k_add_var(k_env_t *env, _k_variable_t *var, char global) {
+    if (global) {
+        env->runtime->globals = realloc(env->runtime->globals, sizeof(_k_variable_t) * (env->runtime->global_count + 1));
+
+        memcpy(&env->runtime->globals[env->runtime->global_count++], var, sizeof(_k_variable_t));
+    } else {
+        env->runtime->locals = realloc(env->runtime->locals, sizeof(_k_variable_t) * (env->runtime->local_count + 1));
+
+        memcpy(&env->runtime->locals[env->runtime->local_count++], var, sizeof(_k_variable_t));
     }
-
-    _locals        = realloc(_locals, sizeof(char *) * (_local_count + 1));
-    _local_offsets = realloc(_local_offsets, sizeof(unsigned long) * (_local_count + 1));
-
-    _locals[_local_count]          = strdup(name);
-    _local_offsets[_local_count++] = _base_offset + _var_size;
-
-    return _base_offset += _var_size;
 }
 
 /*
- *    Gets the offset of a local variable.
+ *    Gets a variable from the compiler environment.
  *
+ *    @param k_env_t    *env     The environment to get the variable from.
  *    @param const char *name    The name of the variable.
  * 
- *    @return unsigned long      The offset of the variable.
+ *    @return _k_variable_t *    The variable.
  */
-unsigned long _k_get_local(const char *name) {
-    for (unsigned long i = 0; i < _local_count; i++) {
-        if (strcmp(_locals[i], name) == 0) {
-            return _local_offsets[i];
+_k_variable_t *_k_get_var(k_env_t *env, const char *name) {
+    for (unsigned long i = 0; i < env->runtime->local_count; i++) {
+        if (strcmp(env->runtime->locals[i].name, name) == 0) {
+            return &env->runtime->locals[i];
         }
     }
 
-    return 0;
+    for (unsigned long i = 0; i < env->runtime->global_count; i++) {
+        if (strcmp(env->runtime->globals[i].name, name) == 0) {
+            return &env->runtime->globals[i];
+        }
+    }
+
+    return (void *)0x0;
+}
+
+/*
+ *    Gets the address of a function.
+ *
+ *    @param k_env_t    *env    The environment to get the function from.
+ *    @param const char *name    The name of the function.
+ *
+ *    @return char *      The address of the function.
+ */
+char *_k_get_function(k_env_t *env, const char *name) {
+    /* TODO: Add built in functions.  */
+
+    for (unsigned long i = 0; i < env->runtime->function_count; i++) {
+        if (strcmp(env->runtime->function_table[i].name, name) == 0) {
+            return env->runtime->function_table[i].source;
+        }
+    }
+
+    return (char *)0x0;
 }
 
 /*
@@ -111,27 +130,46 @@ void _k_compile_expression(k_env_t *env, const char *source) {
                 break;
 
             case _K_TOKEN_TYPE_IDENTIFIER:
-                /* Set LH value to value pointed to by identifier.  */
-                _k_assemble_move(env, _k_get_local(_k_get_token_str(env)));
-                _k_advance_token(env);
+                _k_variable_t *var = _k_get_var(env, _k_get_token_str(env));
+
+                if (var->flags & _K_VARIABLE_FLAG_FUNC) {
+                    /* Function call.  */
+                    _k_advance_token(env);
+
+                    if (*type == _K_TOKEN_TYPE_NEWEXPRESSION) {
+                        _k_advance_token(env);
+                    } else return;
+
+                    unsigned long i = 0;
+
+                    while (*type != _K_TOKEN_TYPE_ENDEXPRESSION) {
+                        _k_compile_expression(env, source);
+
+                        _k_assemble_parameter_store(env, var->offset, i++);
+
+                        if (*type == _K_TOKEN_TYPE_SEPARATOR) {
+                            _k_advance_token(env);
+                        }
+                    }
+
+                    _k_advance_token(env);
+
+                    _k_assemble_call(env, _k_get_function(env, var->name));
+                } else {
+                    /* Set LH value to value pointed to by identifier.  */
+                    _k_assemble_move(env, _k_get_var(env, var->name)->offset);
+                    _k_advance_token(env);
+                }
                 break;
 
             case _K_TOKEN_TYPE_NEWEXPRESSION:
                 _k_advance_token(env);
-                /*
-                *    If LH is an identifier, it's a function call.
-                *    Otherwise, it's a parenthesized expression.
-                */
-                if (prev->tokenable->type == _K_TOKEN_TYPE_IDENTIFIER) {
-                    /* Handle function call */
-                } else {
-                    _k_compile_expression(env, source);
-                    if (*type == _K_TOKEN_TYPE_ENDEXPRESSION) {
-                        _k_advance_token(env);
-                    } else {
-                        return;
-                    }
-                }
+                
+                _k_compile_expression(env, source);
+
+                if (*type == _K_TOKEN_TYPE_ENDEXPRESSION) {
+                    _k_advance_token(env);
+                } else return;
                 break;
 
             case _K_TOKEN_TYPE_NEWINDEX:
@@ -153,7 +191,7 @@ void _k_compile_expression(k_env_t *env, const char *source) {
                     _k_compile_expression(env, source);
                     
                     /* Assembly generated should put arithmetic register into local address. */
-                    _k_assemble_assignment(env, _k_get_local(lh->str));
+                    _k_assemble_assignment(env, _k_get_var(env, lh->str)->offset);
                 } 
                 
                 else if (strcmp(op, "+") == 0) {
@@ -241,7 +279,8 @@ void _k_compile_statement(k_env_t *env, const char *source) {
 
             case _K_TOKEN_TYPE_IDENTIFIER:
                 /* Get size for stack allocation.  */
-                _var_size = _k_deduce_size(_k_get_token_str(env));
+                char *type = _k_get_token_str(env);
+                _var_size  = _k_deduce_size(type);
 
                 _k_advance_token(env);
 
@@ -249,12 +288,18 @@ void _k_compile_statement(k_env_t *env, const char *source) {
                     _k_advance_token(env);
 
                     /* Hold on to stack offsets.  */
-                    _k_add_local(_k_get_token_str(env));
+                    _k_variable_t var = {
+                        .name   = _k_get_token_str(env),
+                        .type   = type,
+                        .offset = _base_offset += _var_size,
+                        .flags  = 0x0,
+                        .size   = _var_size,
+                    };
+
+                    _k_add_var(env, &var, 0);
 
                     /* Check for variable declaration.  */
                     if (*type == _K_TOKEN_TYPE_IDENTIFIER) {
-                        char *id = _k_get_token_str(env);
-
                         _k_advance_token(env);
 
                         if (*type == _K_TOKEN_TYPE_OPERATOR) {
@@ -265,7 +310,7 @@ void _k_compile_statement(k_env_t *env, const char *source) {
 
                             _k_advance_token(env);
                             _k_compile_expression(env, source);
-                            _k_assemble_assignment(env, _k_get_local(id));
+                            _k_assemble_assignment(env, var.offset);
                         }
                     }
                 } 
@@ -274,6 +319,7 @@ void _k_compile_statement(k_env_t *env, const char *source) {
                 else _k_revert_token(env);
 
             default:
+            type = &env->cur_type;
                 _k_compile_expression(env, source);
 
                 if (*type == _K_TOKEN_TYPE_ENDLINE)
@@ -350,7 +396,15 @@ k_compile_error_t _k_compile_global_declaration(k_env_t *env, const char *source
             } else return K_ERROR_UNEXPECTED_TOKEN;
 
             if (*type == _K_TOKEN_TYPE_IDENTIFIER) {
-                _k_add_local(_k_get_token_str(env));
+                _k_variable_t var = {
+                    .name   = _k_get_token_str(env),
+                    .type   = "param",
+                    .offset = _base_offset += _var_size,
+                    .flags  = 0x0,
+                    .size   = _var_size,
+                };
+
+                _k_add_var(env, &var, 0);
                 
                 _k_advance_token(env);
             } else return K_ERROR_UNEXPECTED_TOKEN;
@@ -360,7 +414,17 @@ k_compile_error_t _k_compile_global_declaration(k_env_t *env, const char *source
             }
         }
 
+        _k_variable_t var = {
+            .name   = id,
+            .type   = "function",
+            .offset = 0x0,
+            .flags  = _K_VARIABLE_FLAG_FUNC,
+            .size   = 0x0,
+        };
+
         _k_advance_token(env);
+
+        _k_add_var(env, &var, 1);
 
         env->runtime->function_table = realloc(env->runtime->function_table, sizeof(_k_function_t) * (env->runtime->function_count + 1));
 
@@ -372,8 +436,10 @@ k_compile_error_t _k_compile_global_declaration(k_env_t *env, const char *source
 
         _k_assemble_prelude(env);
 
-        for (i = 0; i < _local_count; i++) {
-            _k_assemble_parameter_store(env, _local_offsets[i], i);
+        for (i = 0; i < env->runtime->local_count; i++) {
+            _k_variable_t *param = &env->runtime->locals[i];
+
+            _k_assemble_parameter_store(env, param->offset, i);
         }
 
         _k_compile_statement(env, source);
@@ -383,6 +449,12 @@ k_compile_error_t _k_compile_global_declaration(k_env_t *env, const char *source
         memcpy(exec, env->cur_function->source, env->cur_function->size);
 
         env->cur_function->source = exec;
+
+        if (env->runtime->local_count > 0) {
+            free(env->runtime->locals);
+        }
+
+        env->runtime->locals = (_k_function_t *)0x0;
 
     } else return K_ERROR_UNEXPECTED_TOKEN;
 
