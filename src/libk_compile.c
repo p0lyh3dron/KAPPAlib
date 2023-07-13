@@ -225,6 +225,8 @@ k_compile_error_t _k_compile_global_declaration(k_env_t *env, const char *source
 
         _k_assemble_prelude(env);
 
+        unsigned long old = env->runtime->size;
+
         for (i = 0; i < env->runtime->local_count; i++) {
             _k_variable_t *param = &env->runtime->locals[i];
 
@@ -232,6 +234,8 @@ k_compile_error_t _k_compile_global_declaration(k_env_t *env, const char *source
         }
 
         _k_compile_statement(env);
+
+        _k_assemble_allocate(env, _base_offset, old);
 
         if (env->runtime->local_count > 0) {
             free(env->runtime->locals);

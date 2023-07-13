@@ -47,6 +47,24 @@ void _k_append_bytecode(k_env_t *env, char *bytecode, unsigned long length) {
 }
 
 /*
+ *    Inserts bytecode into the current function.
+ *
+ *    @param k_env_t  *env       The environment to insert bytecode into.
+ *    @param char     *bytecode  The bytecode to insert.
+ *    @param unsigned  long      The length of the bytecode.
+ *    @param unsigned  long      The offset to insert the bytecode at.
+ */
+void _k_insert_bytecode(k_env_t *env, char *bytecode, unsigned long length, unsigned long offset) {
+    env->runtime->mem = (char *)realloc(env->runtime->mem, env->runtime->size + length);
+
+    memmove(env->runtime->mem + offset + length, env->runtime->mem + offset, env->runtime->size - offset);
+
+    memcpy(env->runtime->mem + offset, bytecode, length);
+
+    env->runtime->size += length;
+}
+
+/*
  *    Generates the assembly for the prelude.
  *
  *    @param k_env_t *env    The environment to generate the prelude for.
@@ -59,6 +77,24 @@ void _k_assemble_prelude(k_env_t *env) {
     const char *prelude = "\x55\x48\x89\xE5";
 
     _k_append_bytecode(env, (char *)prelude, 4);
+}
+
+/*
+ *    Generates assembly for memory allocation.
+ *
+ *    @param k_env_t *env    The environment to generate the memory allocation for.
+ *    @param unsigned long   The size of the memory to allocate.
+ *    @param unsigned long   The offset into the function to allocate at.
+ */
+void _k_assemble_allocate(k_env_t *env, unsigned long size, unsigned long offset) {
+    /*
+     *     48 81 EC 00   sub  rsp, size
+     */
+    const char *allocate = "\x48\x81\xEC\x00";
+    signed long size_signed = size;
+
+    _k_insert_bytecode(env, (char *)allocate, 3, offset);
+    _k_insert_bytecode(env, (char *)&size_signed, 4, offset + 3);
 }
 
 /*
@@ -119,7 +155,7 @@ void _k_assemble_call(k_env_t *env, unsigned long offset) {
      *    E8 00 00 00 00    call offset
      */
     const char *call = "\xE8";
-    signed int offset_signed = (char*)offset - (env->runtime->mem + env->runtime->size + 5);
+    signed int offset_signed = (char*)offset - (env->runtime->mem + env->runtime->size + 5 + 7);
 
     _k_append_bytecode(env, (char *)call, 1);
     _k_append_bytecode(env, (char *)&offset_signed, 4);

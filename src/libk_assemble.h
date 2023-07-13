@@ -29,6 +29,15 @@ typedef enum {
 void _k_assemble_prelude(k_env_t *env);
 
 /*
+ *    Generates assembly for memory allocation.
+ *
+ *    @param k_env_t *env    The environment to generate the memory allocation for.
+ *    @param unsigned long   The size of the memory to allocate.
+ *    @param unsigned long   The offset into the function to allocate at.
+ */
+void _k_assemble_allocate(k_env_t *env, unsigned long size, unsigned long offset);
+
+/*
  *    Generates a paremeter store for a function.
  *
  *    @param k_env_t *env    The environment to generate the parameter store for.
