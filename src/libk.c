@@ -148,7 +148,7 @@ void k_call_function(k_env_t *env, const char *name, void **ret, void *arg, ...)
 
             va_end(args);
 
-            asm volatile("mov %0, %%rax" : : "r" (env->runtime->function_table[i].source));
+            asm volatile("mov %0, %%rax" : : "r" (env->runtime->mem + (long)env->runtime->function_table[i].source));
             asm volatile("call *%rax");
 
             if (ret != (void*)0x0)

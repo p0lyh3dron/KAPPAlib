@@ -45,11 +45,9 @@ int main() {
 
     unsigned long fib;
 
-    for (int i = 0; i < 10; i++) {
-        k_call_function(env, "fib", &fib, i);
+    k_call_function(env, "fib", &fib, 10);
 
-        printf("fib(%d) = %lu\n", i, fib);
-    }
+    printf("fib(%d) = %lu\n", 10, fib);
 
     k_destroy_env(env);
     

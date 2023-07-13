@@ -101,10 +101,10 @@ void _k_assemble_addition(k_env_t *env);
 /*
  *    Generates assembly for a comparison.
  *
- *    @param k_env_t *env    The environment to generate the comparison for.
- *    @param _k_cmp_e cmp     The comparison to generate.
+ *    @param k_env_t      *env     The environment to generate the comparison for.
+ *    @param _k_op_type_e  cmp     The comparison to generate.
  */
-void _k_assemble_comparison(k_env_t *env, _k_cmp_e cmp);
+void _k_assemble_comparison(k_env_t *env, _k_op_type_e cmp);
 
 /*
  *    Generates assembly for a while.

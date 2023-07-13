@@ -54,17 +54,15 @@ char *_k_get_function(k_env_t *env, const char *name);
  *    Compiles an expression.
  *
  *    @param k_env_t    *env       The environment to parse the expression in.
- *    @param const char *source    The source to parse the expression from.
  */
-void _k_compile_expression(k_env_t *env, const char *source);
+void _k_compile_expression(k_env_t *env);
 
 /*
  *    Compiles a statement.
  *
  *    @param k_env_t    *env       The environment to parse the statement in.
- *    @param const char *source    The source to parse the statement from.
  */
-void _k_compile_statement(k_env_t *env, const char *source);
+void _k_compile_statement(k_env_t *env);
 
 /*
  *    Compiles a global declaration.

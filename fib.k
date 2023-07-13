@@ -1,11 +1,3 @@
-$
-*    fib.k    --    test source for KAPPA
-*
-*    Computes the nth Fibonacci number.
-$
-
-$u64: _global = 0;$
-
 u64: ret() {
     return 1;
 }

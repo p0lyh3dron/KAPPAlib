@@ -39,11 +39,11 @@ const char *_param_regs_ld[] = {
  *    @param unsigned long   The length of the bytecode.
  */
 void _k_append_bytecode(k_env_t *env, char *bytecode, unsigned long length) {
-    env->cur_function->source = (char *)realloc(env->cur_function->source, env->cur_function->size + length);
+    env->runtime->mem = (char *)realloc(env->runtime->mem, env->runtime->size + length);
 
-    memcpy(env->cur_function->source + env->cur_function->size, bytecode, length);
+    memcpy(env->runtime->mem + env->runtime->size, bytecode, length);
 
-    env->cur_function->size  += length;
+    env->runtime->size  += length;
 }
 
 /*
@@ -119,7 +119,7 @@ void _k_assemble_call(k_env_t *env, unsigned long offset) {
      *    E8 00 00 00 00    call offset
      */
     const char *call = "\xE8";
-    signed long offset_signed = (signed)offset - (signed long)(env->cur_function->source + env->cur_function->size + 5);
+    signed int offset_signed = (char*)offset - (env->runtime->mem + env->runtime->size + 5);
 
     _k_append_bytecode(env, (char *)call, 1);
     _k_append_bytecode(env, (char *)&offset_signed, 4);
@@ -206,10 +206,10 @@ void _k_assemble_addition(k_env_t *env) {
 /*
  *    Generates assembly for a comparison.
  *
- *    @param k_env_t *env    The environment to generate the comparison for.
- *    @param _k_cmp_e cmp     The comparison to generate.
+ *    @param k_env_t      *env     The environment to generate the comparison for.
+ *    @param _k_op_type_e  cmp     The comparison to generate.
  */
-void _k_assemble_comparison(k_env_t *env, _k_cmp_e cmp) {
+void _k_assemble_comparison(k_env_t *env, _k_op_type_e cmp) {
     /*
      *     48 39 C1   cmp  rcx, rasx
      */
@@ -220,25 +220,25 @@ void _k_assemble_comparison(k_env_t *env, _k_cmp_e cmp) {
     const char *set = (const char*)0x0;
 
     switch (cmp) {
-        case _K_CMP_E:
+        case _K_OP_E:
             /*
              *     0F 94 C0   sete al
              */
             set = "\x0F\x94\xC0";
             break;
-        case _K_CMP_NE:
+        case _K_OP_NE:
             /*
              *     0F 95 C0   setne al
              */
             set = "\x0F\x95\xC0";
             break;
-        case _K_CMP_L:
+        case _K_OP_L:
             /*
              *     0F 9C C0   setl al
              */
             set = "\x0F\x9C\xC0";
             break;
-        case _K_CMP_LE:
+        case _K_OP_LE:
             /*
              *     0F 9E C0   setle al
              */
@@ -281,11 +281,11 @@ char *_k_assemble_while(k_env_t *env) {
      *    0F 84 00 00 00 00    je  end
      */
     const char *while_start = "\x48\x83\xF8\x00\x0F\x84\x00\x00\x00\x00";
-    signed long offset_signed = 0xFFFFFFFF - env->cur_function->size + 1;
+    signed long offset_signed = 0xFFFFFFFF - env->runtime->size + 1;
 
     _k_append_bytecode(env, (char *)while_start, 10);
 
-    return env->cur_function->source + env->cur_function->size - 4;
+    return env->runtime->mem + env->runtime->size - 4;
 }
 
 /*
@@ -299,7 +299,7 @@ void _k_assemble_jump(k_env_t *env, char *address) {
      *    E9 00 00 00 00    jmp address
      */
     const char *jump = "\xE9";
-    signed long offset_signed = address - (env->cur_function->source + env->cur_function->size + 5);
+    signed long offset_signed = address - (env->runtime->mem + env->runtime->size + 5);
 
     _k_append_bytecode(env, (char *)jump, 1);
     _k_append_bytecode(env, (char *)&offset_signed, 4);
@@ -329,13 +329,13 @@ void _k_assemble_return(k_env_t *env) {
  *    @return char *         The assembly bytestream.
  */
 char *_k_print_assembly(k_env_t *env) {
-    char *assembly = malloc(env->cur_function->size * 3 + 1);
+    char *assembly = malloc(env->runtime->size * 3 + 1);
 
-    for (unsigned long i = 0; i < env->cur_function->size; i++) {
-        sprintf(assembly + i * 3, "%02X ", (unsigned char)env->cur_function->source[i]);
+    for (unsigned long i = 0; i < env->runtime->size; i++) {
+        sprintf(assembly + i * 3, "%02X ", (unsigned char)env->runtime->mem[i]);
     }
 
-    assembly[env->cur_function->size * 3] = '\0';
+    assembly[env->runtime->size * 3] = '\0';
 
     return assembly;
 }

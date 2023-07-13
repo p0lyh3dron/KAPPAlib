@@ -77,10 +77,30 @@ typedef struct {
     char           flags;
 } _k_variable_t;
 
+typedef enum {
+    _K_OP_NONE = 0,
+    _K_OP_ADD,
+    _K_OP_SUB,
+    _K_OP_MUL,
+    _K_OP_DIV,
+    _K_OP_MOD,
+    _K_OP_L,
+    _K_OP_LE,
+    _K_OP_G,
+    _K_OP_GE,
+    _K_OP_E,
+    _K_OP_NE,
+    _K_OP_AND,
+    _K_OP_OR,
+    _K_OP_NOT,
+    _K_OP_NEG,
+    _K_OP_ASSIGN,
+} _k_op_type_e;
+
 typedef struct {
-    _k_token_type_e     type;
-    k_compile_error_t (*compile)(k_env_t *env);
-} _k_grammar_t;
+    const char   *operator;
+    _k_op_type_e  type;
+} _k_operator_t;
 
 typedef struct {
     char          *mem;
@@ -109,6 +129,13 @@ typedef enum {
     K_ERROR_UNDECLARED_TYPE,
     K_ERROR_UNDECLARED_IDENTIFIER,
     K_ERROR_INVALID_ENDEXPRESSION,
+    K_ERROR_INVALID_DECLARATION,
+    K_ERROR_JUNK_AFTER_DECLARATION,
 } k_compile_error_t;
+
+typedef struct {
+    _k_token_type_e     type;
+    k_compile_error_t (*compile)(k_env_t *env);
+} _k_grammar_t;
 
 #endif /* _LIBK_TYPES_H  */
