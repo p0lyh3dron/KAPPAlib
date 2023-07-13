@@ -44,10 +44,13 @@ int main() {
     free(source);
 
     unsigned long fib;
+    unsigned long factorial;
 
-    k_call_function(env, "fib", &fib, 10);
+    k_call_function(env, "fib", &fib, 1, 10);
+    k_call_function(env, "factorial", &factorial, 1, 10);
 
     printf("fib(%d) = %lu\n", 10, fib);
+    printf("factorial(%d) = %lu\n", 10, factorial);
 
     k_destroy_env(env);
     

@@ -241,7 +241,8 @@ k_compile_error_t _k_compile_global_declaration(k_env_t *env, const char *source
             free(env->runtime->locals);
         }
 
-        env->runtime->locals = (_k_function_t *)0x0;
+        env->runtime->locals      = (_k_function_t *)0x0;
+        env->runtime->local_count = 0;
 
     } else return K_ERROR_UNEXPECTED_TOKEN;
 
@@ -306,7 +307,7 @@ k_compile_error_t _k_compile_identifier(k_env_t *env) {
             while (env->cur_type != _K_TOKEN_TYPE_ENDEXPRESSION) {
                 _k_compile_expression(env);
 
-                _k_assemble_parameter_store(env, var->offset, param_count++);
+                _k_assemble_parameter_load(env, param_count++);
 
                 if (env->cur_type == _K_TOKEN_TYPE_SEPARATOR) {
                     _k_advance_token(env);
@@ -385,6 +386,9 @@ k_compile_error_t _k_compile_operator(k_env_t *env) {
             break;
 
         case _K_OP_MUL:
+            _k_assemble_mov_rcx_rax(env);
+            _k_compile_expression(env);
+            _k_assemble_multiplication(env);
             break;
 
         case _K_OP_DIV:
@@ -486,7 +490,21 @@ k_compile_error_t _k_compile_keyword(k_env_t *env) {
     _k_advance_token(env);
 
     if (strcmp(keyword, "if") == 0) {
+        /* Hold on to the start address.  */
+        unsigned long old = env->runtime->size;
+
+        /* Create while condition.  */
+        _k_compile_expression(env);
         
+        /* Address to write jump into after statement.  */
+        char *offset = _k_assemble_while(env);
+
+        /* Write statement and jump to check condition again. */
+        _k_compile_statement(env);
+
+        /* Update initial condition bytecode with exit address.  */
+        long int address = (env->runtime->size - 0x25) - old;
+        memcpy(offset, &address, 4);
     }
 
     else if (strcmp(keyword, "else") == 0) {

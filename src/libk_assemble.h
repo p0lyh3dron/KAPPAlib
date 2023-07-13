@@ -108,6 +108,13 @@ void _k_assemble_mov_rcx_rax(k_env_t *env);
 void _k_assemble_addition(k_env_t *env);
 
 /*
+ *    Generates assembly for a multiplication.
+ *
+ *    @param k_env_t *env    The environment to generate the multiplication for.
+ */ 
+void _k_assemble_multiplication(k_env_t *env);
+
+/*
  *    Generates assembly for a comparison.
  *
  *    @param k_env_t      *env     The environment to generate the comparison for.

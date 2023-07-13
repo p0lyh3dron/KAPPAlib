@@ -57,10 +57,11 @@ void *k_get_function(k_env_t *env, const char *name);
  *    @param k_env_t       *env       The environment to call the function in.
  *    @param const char    *name      The name of the function.
  *    @param void         **ret       The return value of the function.
+ *    @param unsigned long  argc      The number of arguments to pass to the function.
  *    @param void          *arg       The argument to pass to the function.
  *    @param ...                       The rest of the arguments to pass to the function.
  */
-void k_call_function(k_env_t *env, const char *name, void **ret, void *arg, ...);
+void k_call_function(k_env_t *env, const char *name, void **ret, unsigned long argc, void *arg, ...);
 
 /*
  *    Destroys a KAPPA environment.

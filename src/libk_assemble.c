@@ -240,6 +240,20 @@ void _k_assemble_addition(k_env_t *env) {
 }
 
 /*
+ *    Generates assembly for a multiplication.
+ *
+ *    @param k_env_t *env    The environment to generate the multiplication for.
+ */ 
+void _k_assemble_multiplication(k_env_t *env) {
+    /*
+     *     48 0F AF C1   imul rax, rcx
+     */
+    const char *multiplication = "\x48\x0F\xAF\xC1";
+
+    _k_append_bytecode(env, (char *)multiplication, 4);
+}
+
+/*
  *    Generates assembly for a comparison.
  *
  *    @param k_env_t      *env     The environment to generate the comparison for.
@@ -349,7 +363,7 @@ void _k_assemble_jump(k_env_t *env, char *address) {
 void _k_assemble_return(k_env_t *env) {
     /*
      *    48 89 EC    mov rsp, rbp
-     *    5D          pop rbp
+     *    C9          pop rbp
      *    C3          ret
      */
     const char *ret = "\x48\x89\xEC\x5D\xC3";

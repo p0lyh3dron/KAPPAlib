@@ -108,11 +108,12 @@ void *k_get_function(k_env_t *env, const char *name) {
  *    @param k_env_t       *env       The environment to call the function in.
  *    @param const char    *name      The name of the function.
  *    @param void         **ret       The return value of the function.
+ *    @param unsigned long  argc      The number of arguments to pass to the function.
  *    @param void          *arg       The argument to pass to the function.
  *    @param ...                       The rest of the arguments to pass to the function.
  */
-void k_call_function(k_env_t *env, const char *name, void **ret, void *arg, ...) {
-    if (env == (k_env_t*)0x0 || name == (const char*)0x0 || ret == (void*)0x0 || arg == (void*)0x0)
+void k_call_function(k_env_t *env, const char *name, void **ret, unsigned long argc, void *arg, ...) {
+    if (env == (k_env_t*)0x0 || name == (const char*)0x0 || ret == (void*)0x0)
         return;
 
     for (unsigned long i = 0; i < env->runtime->function_count; i++) {
@@ -127,7 +128,7 @@ void k_call_function(k_env_t *env, const char *name, void **ret, void *arg, ...)
 
             va_start(args, arg);
 
-            while (arg != (void*)0x0) {
+            while (j < argc) {
                 switch (j++) {
                     case 0:
                         asm volatile("mov %0, %%rdi" : : "r" (arg));
