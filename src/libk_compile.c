@@ -301,6 +301,7 @@ k_compile_error_t _k_compile_identifier(k_env_t *env) {
         /* Function call.  */
         if (env->cur_type == _K_TOKEN_TYPE_NEWEXPRESSION) {
             _k_advance_token(env);
+            _k_assemble_store_rax_rcx(env);
 
             unsigned long param_count = 0;
 
@@ -315,6 +316,7 @@ k_compile_error_t _k_compile_identifier(k_env_t *env) {
             }
 
             _k_assemble_call(env, _k_get_function(env, var->name));
+            _k_assemble_load_rax_rcx(env);
         }
 
         /* Return the address of the function.  */
@@ -383,6 +385,10 @@ k_compile_error_t _k_compile_operator(k_env_t *env) {
             break;
         
         case _K_OP_SUB:
+            _k_assemble_mov_rcx_rax(env);
+            _k_compile_expression(env);
+            _k_assemble_swap_rax_rcx(env);
+            _k_assemble_subtraction(env);
             break;
 
         case _K_OP_MUL:
@@ -392,9 +398,18 @@ k_compile_error_t _k_compile_operator(k_env_t *env) {
             break;
 
         case _K_OP_DIV:
+            _k_assemble_mov_rcx_rax(env);
+            _k_compile_expression(env);
+            _k_assemble_swap_rax_rcx(env);
+            _k_assemble_division(env);
             break;
 
         case _K_OP_MOD:
+            _k_assemble_mov_rcx_rax(env);
+            _k_compile_expression(env);
+            _k_assemble_swap_rax_rcx(env);
+            _k_assemble_division(env);
+            _k_assemble_mov_rdx_rax(env);
             break;
 
         case _K_OP_L:

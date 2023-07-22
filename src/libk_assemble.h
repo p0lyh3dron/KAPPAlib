@@ -94,11 +94,39 @@ void _k_assemble_move(k_env_t *env, unsigned long offset);
 void _k_assemble_mov_integer(k_env_t *env, long integer);
 
 /*
+ *    Generates assembly to store rcx.
+ *
+ *    @param k_env_t *env    The environment to generate assembly for.
+ */
+void _k_assemble_store_rcx(k_env_t *env);
+
+/*
+ *    Generates assembly to load rcx.
+ *
+ *    @param k_env_t *env    The environment to generate assembly for.
+ */
+void _k_assemble_load_rcx(k_env_t *env);
+
+/*
  *    Generates assembly to mov rax into rcx.
  *
  *    @param k_env_t *env    The environment to generate assembly for.
  */
 void _k_assemble_mov_rcx_rax(k_env_t *env);
+
+/*
+ *    Generates assembly to swap rax and rcx.
+ *
+ *    @param k_env_t *env    The environment to generate assembly for.
+ */
+void _k_assemble_swap_rax_rcx(k_env_t *env);
+
+/*
+ *    Generates assembly to move rdx to rax.
+ *
+ *    @param k_env_t *env    The environment to generate assembly for.
+ */
+void _k_assemble_mov_rdx_rax(k_env_t *env);
 
 /*
  *    Generates assembly for an addition.
@@ -108,11 +136,25 @@ void _k_assemble_mov_rcx_rax(k_env_t *env);
 void _k_assemble_addition(k_env_t *env);
 
 /*
+ *    Generates assembly for a subtraction.
+ *
+ *    @param k_env_t *env    The environment to generate the subtraction for.
+ */
+void _k_assemble_subtraction(k_env_t *env);
+
+/*
  *    Generates assembly for a multiplication.
  *
  *    @param k_env_t *env    The environment to generate the multiplication for.
  */ 
 void _k_assemble_multiplication(k_env_t *env);
+
+/*
+ *    Generates assembly for a division.
+ *
+ *    @param k_env_t *env    The environment to generate the division for.
+ */
+void _k_assemble_division(k_env_t *env);
 
 /*
  *    Generates assembly for a comparison.

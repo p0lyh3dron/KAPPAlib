@@ -212,6 +212,34 @@ void _k_assemble_mov_integer(k_env_t *env, long integer) {
 }
 
 /*
+ *    Generates assembly to store rcx.
+ *
+ *    @param k_env_t *env    The environment to generate assembly for.
+ */
+void _k_assemble_store_rax_rcx(k_env_t *env) {
+    /*
+     *    51          push rcx
+     */
+    const char *store = "\x51";
+
+    _k_append_bytecode(env, (char *)store, 1);
+}
+
+/*
+ *    Generates assembly to load rcx.
+ *
+ *    @param k_env_t *env    The environment to generate assembly for.
+ */
+void _k_assemble_load_rax_rcx(k_env_t *env) {
+    /*
+     *    59          pop rcx
+     */
+    const char *load = "\x59";
+
+    _k_append_bytecode(env, (char *)load, 1);
+}
+
+/*
  *    Generates assembly to mov rax into rcx.
  *
  *    @param k_env_t *env    The environment to generate assembly for.
@@ -221,6 +249,34 @@ void _k_assemble_mov_rcx_rax(k_env_t *env) {
      *    48 89 C1    mov rcx, rax
      */
     const char *put = "\x48\x89\xC1";
+
+    _k_append_bytecode(env, (char *)put, 3);
+}
+
+/*
+ *    Generates assembly to swap rax and rcx.
+ *
+ *    @param k_env_t *env    The environment to generate assembly for.
+ */
+void _k_assemble_swap_rax_rcx(k_env_t *env) {
+    /*
+     *    48 91   xchg rax, rcx
+     */
+    const char *swap = "\x48\x91";
+
+    _k_append_bytecode(env, (char *)swap, 2);
+}
+
+/*
+ *    Generates assembly to move rdx to rax.
+ *
+ *    @param k_env_t *env    The environment to generate assembly for.
+ */
+void _k_assemble_mov_rdx_rax(k_env_t *env) {
+    /*
+     *    48 89 D0    mov rax, rdx
+     */
+    const char *put = "\x48\x89\xD0";
 
     _k_append_bytecode(env, (char *)put, 3);
 }
@@ -240,6 +296,20 @@ void _k_assemble_addition(k_env_t *env) {
 }
 
 /*
+ *    Generates assembly for a subtraction.
+ *
+ *    @param k_env_t *env    The environment to generate the subtraction for.
+ */
+void _k_assemble_subtraction(k_env_t *env) {
+    /*
+     *     48 29 C8   sub  rax, rcx
+     */
+    const char *subtraction = "\x48\x29\xC8";
+
+    _k_append_bytecode(env, (char *)subtraction, 3);
+}
+
+/*
  *    Generates assembly for a multiplication.
  *
  *    @param k_env_t *env    The environment to generate the multiplication for.
@@ -251,6 +321,21 @@ void _k_assemble_multiplication(k_env_t *env) {
     const char *multiplication = "\x48\x0F\xAF\xC1";
 
     _k_append_bytecode(env, (char *)multiplication, 4);
+}
+
+/*
+ *    Generates assembly for a division.
+ *
+ *    @param k_env_t *env    The environment to generate the division for.
+ */
+void _k_assemble_division(k_env_t *env) {
+    /*
+     *     48 99      cqo
+     *     48 F7 F9   idiv rcx
+     */
+    const char *division = "\x48\x99\x48\xF7\xF9";
+
+    _k_append_bytecode(env, (char *)division, 5);
 }
 
 /*

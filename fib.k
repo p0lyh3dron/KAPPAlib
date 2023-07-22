@@ -1,14 +1,9 @@
 u64: factorial(u64: n) {
-    u64: i    = 2;
-    u64: fact = 1;
-    
-    while i <= n {
-        fact = fact * i;
-
-        i = i + 1;
+    if n == 1 {
+        return 1;
     }
 
-    return fact;
+    return n * factorial(n - 1);
 }
 
 u64: fib(u64: n) {
