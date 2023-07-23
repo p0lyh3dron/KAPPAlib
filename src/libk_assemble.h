@@ -78,12 +78,28 @@ void _k_assemble_call(k_env_t *env, unsigned long offset);
 void _k_assemble_assignment(k_env_t *env, unsigned long offset);
 
 /*
+ *    Generates assembly for a global assignment.
+ *
+ *    @param k_env_t *env           The environment to generate the assignment for.
+ *    @param unsigned long offset   The offset of the variable to assign to.
+ */
+void _k_assemble_assignment_global(k_env_t *env, unsigned long offset);
+
+/*
  *    Generates assembly for a move into a register.
  *
  *    @param k_env_t *env    The environment to generate the move for.
  *    @param unsigned long   The offset of the variable to move.
  */
 void _k_assemble_move(k_env_t *env, unsigned long offset);
+
+/*
+ *    Generates assembly for a move from a global into a register.
+ *
+ *    @param k_env_t *env    The environment to generate the move for.
+ *    @param unsigned long   The offset of the variable to move.
+ */
+void _k_assemble_move_global(k_env_t *env, unsigned long offset);
 
 /*
  *    Generates assembly to put integer into rax.

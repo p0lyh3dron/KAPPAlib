@@ -179,6 +179,23 @@ void _k_assemble_assignment(k_env_t *env, unsigned long offset) {
 }
 
 /*
+ *    Generates assembly for a global assignment.
+ *
+ *    @param k_env_t *env           The environment to generate the assignment for.
+ *    @param unsigned long offset   The offset of the variable to assign to.
+ */
+void _k_assemble_assignment_global(k_env_t *env, unsigned long offset) {
+    /*
+     *     48 89 05 00 00 00 00   mov  [rip + offset], rax
+     */
+    const char *assignment = "\x48\x89\x05";
+    signed long offset_signed = -offset - 0xe;
+
+    _k_append_bytecode(env, (char *)assignment, 3);
+    _k_append_bytecode(env, (char *)&offset_signed, 4);
+}
+
+/*
  *    Generates assembly for a move into a register.
  *
  *    @param k_env_t *env    The environment to generate the move for.
@@ -190,6 +207,23 @@ void _k_assemble_move(k_env_t *env, unsigned long offset) {
      */
     const char *move = "\x48\x8B\x85";
     signed long offset_signed = 0xFFFFFFFF - offset + 1;
+
+    _k_append_bytecode(env, (char *)move, 3);
+    _k_append_bytecode(env, (char *)&offset_signed, 4);
+}
+
+/*
+ *    Generates assembly for a move from a global into a register.
+ *
+ *    @param k_env_t *env    The environment to generate the move for.
+ *    @param unsigned long   The offset of the variable to move.
+ */
+void _k_assemble_move_global(k_env_t *env, unsigned long offset) {
+    /*
+     *     48 8B 05 00 00 00 00   mov  reg, [rip + offset]
+     */
+    const char *move = "\x48\x8B\x05";
+    signed long offset_signed = -offset - 0xe;    
 
     _k_append_bytecode(env, (char *)move, 3);
     _k_append_bytecode(env, (char *)&offset_signed, 4);
@@ -216,7 +250,7 @@ void _k_assemble_mov_integer(k_env_t *env, long integer) {
  *
  *    @param k_env_t *env    The environment to generate assembly for.
  */
-void _k_assemble_store_rax_rcx(k_env_t *env) {
+void _k_assemble_store_rcx(k_env_t *env) {
     /*
      *    51          push rcx
      */
@@ -230,7 +264,7 @@ void _k_assemble_store_rax_rcx(k_env_t *env) {
  *
  *    @param k_env_t *env    The environment to generate assembly for.
  */
-void _k_assemble_load_rax_rcx(k_env_t *env) {
+void _k_assemble_load_rcx(k_env_t *env) {
     /*
      *    59          pop rcx
      */

@@ -30,8 +30,8 @@ k_build_error_t _k_compile_statement(k_env_t*);
 #include "libk_assemble.h"
 #include "libk_parse.h"
 
-unsigned long   _var_size      = 0;
-unsigned long   _base_offset   = 0;
+unsigned long   _var_size       = 0;
+unsigned long   _local_offset   = 0;
 
 _k_operator_t _operator_table[] = {
     {"+", _K_OP_ADD},
@@ -113,6 +113,26 @@ _k_variable_t *_k_get_var(k_env_t *env, const char *name) {
 }
 
 /*
+ *    Places a global variable into the data section.
+ *
+ *    @param k_env_t       *env     The environment to place the variable in.
+ *    @param _k_variable_t *var     The variable to place.
+ *    @param char          *data    The data to place.
+ */
+void _k_place_global(k_env_t *env, _k_variable_t *var, char *data) {
+    env->runtime->mem = realloc(env->runtime->mem, env->runtime->size + var->size);
+
+    if (data != (char *)0x0)
+        memcpy(env->runtime->mem + env->runtime->size, data, var->size);
+
+    var->offset = env->runtime->size;
+
+    env->runtime->size += var->size;
+
+    _k_add_var(env, var, 1);
+}
+
+/*
  *    Gets the address of a function.
  *
  *    @param k_env_t    *env    The environment to get the function from.
@@ -188,7 +208,7 @@ k_build_error_t _k_compile_identifier(k_env_t *env) {
         /* Function call.  */
         if (env->cur_type == _K_TOKEN_TYPE_NEWEXPRESSION) {
             _k_advance_token(env);
-            _k_assemble_store_rax_rcx(env);
+            _k_assemble_store_rcx(env);
 
             unsigned long param_count = 0;
 
@@ -203,7 +223,7 @@ k_build_error_t _k_compile_identifier(k_env_t *env) {
             }
 
             _k_assemble_call(env, _k_get_function(env, var->name));
-            _k_assemble_load_rax_rcx(env);
+            _k_assemble_load_rcx(env);
         }
 
         /* Return the address of the function.  */
@@ -211,7 +231,12 @@ k_build_error_t _k_compile_identifier(k_env_t *env) {
     }
 
     /* Set value to value pointed to by identifier.  */
-    else _k_assemble_move(env, var->offset);
+    else {
+        if (var->flags & _K_VARIABLE_FLAG_GLOBAL) 
+            _k_assemble_move_global(env, env->runtime->size - var->offset);
+
+        else _k_assemble_move(env, var->offset);
+    }
 
     _k_advance_token(env);
 
@@ -228,11 +253,15 @@ k_build_error_t _k_compile_identifier(k_env_t *env) {
 k_build_error_t _k_compile_new_expression(k_env_t *env) {
     _k_advance_token(env);
 
+    _k_assemble_store_rcx(env);
+
     _K_COMPILE_EXP(env);
 
     if (env->cur_type == _K_TOKEN_TYPE_ENDEXPRESSION) {
         _k_advance_token(env);
     } else return K_ERROR_INVALID_ENDEXPRESSION;
+
+    _k_assemble_load_rcx(env);
 
     return K_ERROR_NONE;
 }
@@ -325,8 +354,14 @@ k_build_error_t _k_compile_operator(k_env_t *env) {
         case _K_OP_ASSIGN:
             _K_COMPILE_EXP(env);
 
+            _k_variable_t *var = _k_get_var(env, lh->str);
+
             /* Assembly generated should put arithmetic register into local address. */
-            _k_assemble_assignment(env, _k_get_var(env, lh->str)->offset);
+            if (var->flags & _K_VARIABLE_FLAG_GLOBAL)
+                _k_assemble_assignment_global(env, env->runtime->size - var->offset);
+
+            else _k_assemble_assignment(env, var->offset);
+
             break;
     }
 
@@ -494,7 +529,7 @@ k_build_error_t _k_compile_declaration(k_env_t *env) {
     _k_variable_t var = {
         .name   = _k_get_token_str(env),
         .type   = type,
-        .offset = _base_offset += size,
+        .offset = _local_offset += size,
         .flags  = 0x0,
         .size   = size,
     };
@@ -637,7 +672,7 @@ k_build_error_t _k_compile_function_declaration(k_env_t *env) {
         _k_variable_t var = {
             .name   = _k_get_token_str(env),
             .type   = type,
-            .offset = _base_offset += param_size,
+            .offset = _local_offset += param_size,
             .flags  = 0x0,
             .size   = param_size,
         };
@@ -665,7 +700,7 @@ k_build_error_t _k_compile_function_declaration(k_env_t *env) {
 
     _K_COMPILE_STMT(env);
 
-    _k_assemble_allocate(env, _base_offset, old);
+    _k_assemble_allocate(env, _local_offset, old);
 
     if (env->runtime->local_count > 0) {
         free(env->runtime->locals);
@@ -706,7 +741,7 @@ k_build_error_t _k_compile_global_declaration(k_env_t *env) {
         .name   = _k_get_token_str(env),
         .type   = type,
         .offset = 0,
-        .flags  = 0x0,
+        .flags  = _K_VARIABLE_FLAG_GLOBAL,
         .size   = _k_deduce_size(type),
     };
 
@@ -732,12 +767,40 @@ k_build_error_t _k_compile_global_declaration(k_env_t *env) {
         _k_advance_token(env);
         
         /* Initialize global and assign constant.  */
-        if (env->cur_type != _K_TOKEN_TYPE_NUMBER ||
-            env->cur_type != _K_TOKEN_TYPE_STRING ||
-            env->cur_type != _K_TOKEN_TYPE_IDENTIFIER) {
-            env->log(_k_get_error(env, "Expected constant after assignment operator, got %s", _k_get_token_str(env)));
-            return K_ERROR_EXPECTED_CONSTANT;
+        if (env->cur_type == _K_TOKEN_TYPE_NUMBER) {
+            unsigned long value = atoi(_k_get_token_str(env));
+
+            _k_place_global(env, &var, (char *)&value);
+            _k_advance_token(env);
+
+            return K_ERROR_NONE;
         }
+
+        if (env->cur_type == _K_TOKEN_TYPE_STRING) {
+            char *value = _k_get_token_str(env);
+
+            _k_place_global(env, &var, value);
+            _k_advance_token(env);
+
+            return K_ERROR_NONE;
+        }
+
+        if (env->cur_type == _K_TOKEN_TYPE_IDENTIFIER) {
+            _k_variable_t *id = _k_get_var(env, _k_get_token_str(env));
+
+            if (id == (_k_variable_t *)0x0) {
+                env->log(_k_get_error(env, "Undefined variable: %s", _k_get_token_str(env)));
+                return K_ERROR_UNDECLARED_VARIABLE;
+            }
+
+            _k_place_global(env, &var, env->runtime->mem + id->offset);
+            _k_advance_token(env);
+
+            return K_ERROR_NONE;
+        }
+
+        env->log(_k_get_error(env, "Expected constant after assignment operator, got %s", _k_get_token_str(env)));
+        return K_ERROR_EXPECTED_CONSTANT;
     }
 
     else if (env->cur_type != _K_TOKEN_TYPE_ENDLINE) {
@@ -777,15 +840,26 @@ _k_grammar_t _loop_grammar[] = {
  */
 
 k_build_error_t _k_compile_loop(k_env_t *env) {
+    unsigned long parsed;
+
     while (env->cur_type != _K_TOKEN_TYPE_EOF) {
+        parsed = 0;
+
         for (unsigned long i = 0; i < ARRAY_SIZE(_loop_grammar); i++) {
             if (env->cur_type == _loop_grammar[i].type) {
+                parsed = 1;
+
                 k_build_error_t ret = _loop_grammar[i].compile(env);
 
                 if (ret != K_ERROR_NONE) return ret;
 
                 break;
             }
+        }
+
+        if (parsed == 0) {
+            env->log(_k_get_error(env, "Invalid global starter: %s", _k_get_token_str(env)));
+            return K_ERROR_UNEXPECTED_TOKEN;
         }
     }
     
