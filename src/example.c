@@ -39,7 +39,12 @@ int main() {
 
     k_set_log_handler(env, puts);
 
-    k_build(env, source);
+    k_build_error_t ret = k_build(env, source);
+
+    if (ret != K_ERROR_NONE) {
+        fprintf(stderr, "Failed to build example.k!\n");
+        return 1;
+    }
 
     free(source);
 

@@ -10,6 +10,15 @@
  */
 #include "libk.h"
 
+k_build_error_t _k_compile_expression(k_env_t*);
+k_build_error_t _k_compile_statement(k_env_t*);
+
+#define _K_COMPILE_EXP(env)   { k_build_error_t __ret = _k_compile_expression(env); \
+                                if (__ret != K_ERROR_NONE) return __ret; }
+
+#define _K_COMPILE_STMT(env)  { k_build_error_t __ret = _k_compile_statement(env); \
+                                if (__ret != K_ERROR_NONE) return __ret; }
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -124,13 +133,464 @@ char *_k_get_function(k_env_t *env, const char *name) {
 }
 
 /*
+ *     Compiles a number.
+ *
+ *     @param k_env_t    *env       The environment to compile the number in.
+ * 
+ *     @return k_build_error_t    The error code, if any.
+ */
+k_build_error_t _k_compile_number(k_env_t *env) {
+    _k_assemble_mov_integer(env, atoi(env->cur_token->str));
+
+    _k_advance_token(env);
+
+    return K_ERROR_NONE;
+}
+
+/*
+ *     Compiles a string.
+ *
+ *     @param k_env_t    *env       The environment to compile the string in.
+ * 
+ *     @return k_build_error_t    The error code, if any.
+ */
+k_build_error_t _k_compile_string(k_env_t *env) {
+    _k_token_t *token = env->cur_token;
+
+    /* TODO  */
+    _k_assemble_mov_integer(env, 0xDEADBEEF);
+
+    _k_advance_token(env);
+
+    return K_ERROR_NONE;
+}
+
+/*
+ *     Compiles an identifier.
+ *
+ *     @param k_env_t    *env       The environment to compile the identifier in.
+ *
+ *     @return k_build_error_t    The error code, if any.
+ */
+k_build_error_t _k_compile_identifier(k_env_t *env) {
+    _k_variable_t *var = _k_get_var(env, env->cur_token->str);
+
+    if (var == (_k_variable_t *)0x0) {
+        env->log(_k_get_error(env, "Undefined variable or function: %s\n", env->cur_token->str));
+
+        return K_ERROR_UNDECLARED_VARIABLE;
+    }
+
+    /* If the variable is a function, we'll compile a function call.  */
+    if (var->flags & _K_VARIABLE_FLAG_FUNC) {
+        _k_advance_token(env);
+
+        /* Function call.  */
+        if (env->cur_type == _K_TOKEN_TYPE_NEWEXPRESSION) {
+            _k_advance_token(env);
+            _k_assemble_store_rax_rcx(env);
+
+            unsigned long param_count = 0;
+
+            while (env->cur_type != _K_TOKEN_TYPE_ENDEXPRESSION) {
+                _K_COMPILE_EXP(env);
+
+                _k_assemble_parameter_load(env, param_count++);
+
+                if (env->cur_type == _K_TOKEN_TYPE_SEPARATOR) {
+                    _k_advance_token(env);
+                }
+            }
+
+            _k_assemble_call(env, _k_get_function(env, var->name));
+            _k_assemble_load_rax_rcx(env);
+        }
+
+        /* Return the address of the function.  */
+        else _k_assemble_move(env, var->offset);
+    }
+
+    /* Set value to value pointed to by identifier.  */
+    else _k_assemble_move(env, var->offset);
+
+    _k_advance_token(env);
+
+    return K_ERROR_NONE;
+}
+
+/*
+ *     Compiles a new expression.
+ *
+ *     @param k_env_t    *env       The environment to compile the new expression in.
+ *
+ *     @return k_build_error_t    The error code, if any.
+ */
+k_build_error_t _k_compile_new_expression(k_env_t *env) {
+    _k_advance_token(env);
+
+    _K_COMPILE_EXP(env);
+
+    if (env->cur_type == _K_TOKEN_TYPE_ENDEXPRESSION) {
+        _k_advance_token(env);
+    } else return K_ERROR_INVALID_ENDEXPRESSION;
+
+    return K_ERROR_NONE;
+}
+
+/*
+ *    Compiles an operator.
+ *
+ *    @param k_env_t    *env       The environment to compile the operator in.
+ *
+ *    @return k_build_error_t    The error code, if any.
+ */
+k_build_error_t _k_compile_operator(k_env_t *env) {
+    const char *op = env->cur_token->str;
+    _k_token_t *lh = env->cur_token - 1;
+
+    _k_advance_token(env);
+
+    _k_op_type_e type;
+
+    for (unsigned long i = 0; i < ARRAY_SIZE(_operator_table); i++) {
+        if (strcmp(op, _operator_table[i].operator) == 0) {
+            type = _operator_table[i].type;
+            break;
+        }
+    }
+
+    switch (type) {
+        case _K_OP_ADD:
+            /* 
+            *    LH should be already in arithmetic register, 
+            *    so we'll move into another register, and then 
+            *    add to arithmetic register after compiling the next expression. 
+            */
+            _k_assemble_mov_rcx_rax(env);
+            _K_COMPILE_EXP(env);
+            _k_assemble_addition(env);
+            break;
+        
+        case _K_OP_SUB:
+            _k_assemble_mov_rcx_rax(env);
+            _K_COMPILE_EXP(env);
+            _k_assemble_swap_rax_rcx(env);
+            _k_assemble_subtraction(env);
+            break;
+
+        case _K_OP_MUL:
+            _k_assemble_mov_rcx_rax(env);
+            _K_COMPILE_EXP(env);
+            _k_assemble_multiplication(env);
+            break;
+
+        case _K_OP_DIV:
+            _k_assemble_mov_rcx_rax(env);
+            _K_COMPILE_EXP(env);
+            _k_assemble_swap_rax_rcx(env);
+            _k_assemble_division(env);
+            break;
+
+        case _K_OP_MOD:
+            _k_assemble_mov_rcx_rax(env);
+            _K_COMPILE_EXP(env);
+            _k_assemble_swap_rax_rcx(env);
+            _k_assemble_division(env);
+            _k_assemble_mov_rdx_rax(env);
+            break;
+
+        case _K_OP_L:
+        case _K_OP_LE:
+        case _K_OP_G:
+        case _K_OP_GE:
+        case _K_OP_E:
+        case _K_OP_NE:
+            _k_assemble_mov_rcx_rax(env);
+            _K_COMPILE_EXP(env);
+            _k_assemble_comparison(env, type);
+            break;
+
+        case _K_OP_AND:
+            break;
+
+        case _K_OP_OR:
+            break;
+
+        case _K_OP_NOT:
+            break;
+
+        case _K_OP_NEG:
+            break;
+
+        case _K_OP_ASSIGN:
+            _K_COMPILE_EXP(env);
+
+            /* Assembly generated should put arithmetic register into local address. */
+            _k_assemble_assignment(env, _k_get_var(env, lh->str)->offset);
+            break;
+    }
+
+    return K_ERROR_NONE;
+}
+
+_k_grammar_t _expression_grammar[] = {
+    {_K_TOKEN_TYPE_NUMBER, _k_compile_number},
+    {_K_TOKEN_TYPE_STRING, _k_compile_string},
+    {_K_TOKEN_TYPE_IDENTIFIER, _k_compile_identifier},
+    {_K_TOKEN_TYPE_NEWEXPRESSION, _k_compile_new_expression},
+    {_K_TOKEN_TYPE_OPERATOR, _k_compile_operator},
+};
+
+/*
+ *    Compiles an expression.
+ *
+ *    @param k_env_t    *env       The environment to parse the expression in.
+ *
+ *    @return k_build_error_t    The error code, if any.
+ */
+k_build_error_t _k_compile_expression(k_env_t *env) {
+    _k_token_type_e *type      = &env->cur_type;
+    _k_token_t      *prev      = env->cur_token;
+
+    do {
+        prev = env->cur_token;
+
+        /* Iterate through the grammar table and try to find a match.  */
+        for (unsigned long i = 0; i < ARRAY_SIZE(_expression_grammar); i++) {
+            if (*type == _expression_grammar[i].type) {
+                k_build_error_t ret = _expression_grammar[i].compile(env);
+
+                if (ret != K_ERROR_NONE) return ret;
+
+                break;
+            }
+        }
+    /* If it can't find anything to parse, we're probably no longer in expression land.  */
+    } while (prev != env->cur_token);
+
+    return K_ERROR_NONE;
+}
+
+/*
+ *    Compiles a new statement.
+ *
+ *    @param k_env_t    *env       The environment to compile the new statement in.
+ * 
+ *    @return k_build_error_t    The error code, if any.
+ */
+k_build_error_t _k_compile_new_statement(k_env_t *env) {
+    _k_advance_token(env);
+
+    _K_COMPILE_STMT(env);
+
+    return K_ERROR_NONE;
+}
+
+/*
+ *    Compiles a keyword.
+ *
+ *    @param k_env_t    *env       The environment to compile the keyword in.
+ * 
+ *    @return k_build_error_t    The error code, if any.
+ */
+k_build_error_t _k_compile_keyword(k_env_t *env) {
+    char *keyword = _k_get_token_str(env);
+
+    _k_advance_token(env);
+
+    if (strcmp(keyword, "if") == 0) {
+        /* Hold on to the start address.  */
+        unsigned long old = env->runtime->size;
+
+        /* Create while condition.  */
+        _K_COMPILE_EXP(env);
+        
+        /* Address to write jump into after statement.  */
+        char *offset = _k_assemble_while(env);
+
+        /* Write statement and jump to check condition again. */
+        _K_COMPILE_STMT(env);
+
+        /* Update initial condition bytecode with exit address.  */
+        long int address = (env->runtime->size - 0x25) - old;
+        memcpy(offset, &address, 4);
+    }
+
+    else if (strcmp(keyword, "else") == 0) {
+
+    }
+
+    else if (strcmp(keyword, "while") == 0) {
+        /* Hold on to the start address.  */
+        unsigned long old = env->runtime->size;
+
+        /* Create while condition.  */
+        _K_COMPILE_EXP(env);
+        
+        /* Address to write jump into after statement.  */
+        char *offset = _k_assemble_while(env);
+
+        /* Write statement and jump to check condition again. */
+        _K_COMPILE_STMT(env);
+        _k_assemble_jump(env, env->runtime->mem + old);
+
+        /* Update initial condition bytecode with exit address.  */
+        long int address = (env->runtime->size - 0x25) - old;
+        memcpy(offset, &address, 4);
+    }
+
+    else if (strcmp(keyword, "return") == 0) {
+        /* The final expression will already be in RAX, easy as pie.  */
+        _K_COMPILE_EXP(env);
+        _k_assemble_return(env);
+
+        if (env->cur_type == _K_TOKEN_TYPE_ENDLINE) {
+            _k_advance_token(env);
+        }
+
+        else {
+            env->log(_k_get_error(env, "Expected endline after return statement, got %s", _k_get_token_str(env)));
+
+            _k_advance_token(env);
+
+            return K_ERROR_UNEXPECTED_TOKEN;
+        }
+    }
+
+    return K_ERROR_NONE;
+}
+
+/*
+ *    Compiles a declaration.
+ *
+ *    @param k_env_t    *env       The environment to compile the declaration in.
+ * 
+ *    @return k_build_error_t    The error code, if any.
+ */
+k_build_error_t _k_compile_declaration(k_env_t *env) {
+    char          *type = _k_get_token_str(env);
+    unsigned long  size = _k_deduce_size(type);
+
+    _k_advance_token(env);
+
+    if (env->cur_type != _K_TOKEN_TYPE_DECLARATOR) {
+        _k_revert_token(env);
+
+        /* If there is no declaration, then it must be an expression.  */
+        _K_COMPILE_EXP(env);
+
+        return K_ERROR_NONE;
+    }
+
+    /* Declaration.  */
+    _k_advance_token(env);
+
+    if (env->cur_type != _K_TOKEN_TYPE_IDENTIFIER) {
+        env->log(_k_get_error(env, "Expected identifier after declarator, got %s", _k_get_token_str(env)));
+
+        return K_ERROR_INVALID_DECLARATION;
+    }
+
+    _k_variable_t var = {
+        .name   = _k_get_token_str(env),
+        .type   = type,
+        .offset = _base_offset += size,
+        .flags  = 0x0,
+        .size   = size,
+    };
+
+    _k_add_var(env, &var, 0);
+    _k_advance_token(env);
+
+    /* Check for variable definition.  */
+    if (env->cur_type == _K_TOKEN_TYPE_OPERATOR &&
+        strcmp(_k_get_token_str(env), "=") == 0) {
+        _k_advance_token(env);
+        _K_COMPILE_EXP(env);
+        _k_assemble_assignment(env, var.offset);
+    }
+
+    else if (env->cur_type != _K_TOKEN_TYPE_ENDLINE) {
+        env->log(_k_get_error(env, "Expected assignment operator, got %s", _k_get_token_str(env)));
+
+        _k_advance_token(env);
+
+        return K_ERROR_JUNK_AFTER_DECLARATION;
+    }
+
+    return K_ERROR_NONE;
+}
+
+/*
+ *    Compiles an endline.
+ *
+ *    @param k_env_t    *env       The environment to compile the endline in.
+ * 
+ *    @return k_build_error_t    The error code, if any.
+ */
+k_build_error_t _k_compile_endline(k_env_t *env) {
+    _k_advance_token(env);
+
+    return K_ERROR_NONE;
+}
+
+_k_grammar_t _statement_grammar[] = {
+    {_K_TOKEN_TYPE_NEWSTATEMENT, _k_compile_new_statement},
+    {_K_TOKEN_TYPE_KEYWORD, _k_compile_keyword},
+    {_K_TOKEN_TYPE_IDENTIFIER, _k_compile_declaration},
+    {_K_TOKEN_TYPE_ENDLINE, _k_compile_endline},
+};
+
+/*
+ *    Compiles a statement.
+ *
+ *    @param k_env_t    *env       The environment to parse the statement in.
+ * 
+ *    @return k_build_error_t    The error code, if any.
+ */
+k_build_error_t _k_compile_statement(k_env_t *env) {
+    _k_token_t      **tok   = &env->cur_token;
+    _k_token_type_e *type   = &env->cur_type;
+    unsigned long    parsed = 0;
+
+    _k_advance_token(env);
+
+    do {
+        parsed = 0;
+
+        /* Iterate through the grammar table and try to find a match.  */
+        for (unsigned long i = 0; i < ARRAY_SIZE(_statement_grammar); i++) {
+            if (*type == _statement_grammar[i].type) {
+                parsed = 1;
+
+                k_build_error_t ret = _statement_grammar[i].compile(env);
+
+                if (ret != K_ERROR_NONE) return ret;
+
+                break;
+            }
+        }
+
+        /* If we've hit junk, we'll return an error.  */
+        if (parsed == 0) {
+            env->log(_k_get_error(env, "Invalid statement starter: %s", _k_get_token_str(env)));
+            return K_ERROR_UNEXPECTED_TOKEN;
+        }
+    } while (*type != _K_TOKEN_TYPE_ENDSTATEMENT);
+
+    _k_advance_token(env);
+
+    return K_ERROR_NONE;
+}
+
+/*
  *    Compiles a global declaration.
  *
  *    @param k_env_t    *env       The environment to parse the function declaration in.
  * 
- *    @return k_compile_error_t    The error code, if any.
+ *    @return k_build_error_t    The error code, if any.
  */
-k_compile_error_t _k_compile_global_declaration(k_env_t *env, const char *source) {
+k_build_error_t _k_compile_global_declaration(k_env_t *env, const char *source) {
     unsigned long    i      = 0;
     _k_token_type_e *type   = &env->cur_type;
     char            *id     = (char *)0x0;
@@ -156,7 +616,7 @@ k_compile_error_t _k_compile_global_declaration(k_env_t *env, const char *source
     if (*type == _K_TOKEN_TYPE_OPERATOR) {
         /* Global variable declaration with value.  */
         _k_advance_token(env);
-        _k_compile_expression(env);
+        _K_COMPILE_EXP(env);
 
         if (*type == _K_TOKEN_TYPE_ENDLINE) {
             _k_advance_token(env);
@@ -233,7 +693,7 @@ k_compile_error_t _k_compile_global_declaration(k_env_t *env, const char *source
             _k_assemble_parameter_store(env, param->offset, i);
         }
 
-        _k_compile_statement(env);
+        _K_COMPILE_STMT(env);
 
         _k_assemble_allocate(env, _base_offset, old);
 
@@ -250,452 +710,23 @@ k_compile_error_t _k_compile_global_declaration(k_env_t *env, const char *source
 }
 
 /*
- *     Compiles a number.
- *
- *     @param k_env_t    *env       The environment to compile the number in.
- * 
- *     @return k_compile_error_t    The error code, if any.
- */
-k_compile_error_t _k_compile_number(k_env_t *env) {
-    _k_assemble_mov_integer(env, atoi(env->cur_token->str));
-
-    _k_advance_token(env);
-}
-
-/*
- *     Compiles a string.
- *
- *     @param k_env_t    *env       The environment to compile the string in.
- * 
- *     @return k_compile_error_t    The error code, if any.
- */
-k_compile_error_t _k_compile_string(k_env_t *env) {
-    _k_token_t *token = env->cur_token;
-
-    /* TODO  */
-    _k_assemble_mov_integer(env, 0xDEADBEEF);
-
-    _k_advance_token(env);
-}
-
-/*
- *     Compiles an identifier.
- *
- *     @param k_env_t    *env       The environment to compile the identifier in.
- *
- *     @return k_compile_error_t    The error code, if any.
- */
-k_compile_error_t _k_compile_identifier(k_env_t *env) {
-    _k_variable_t *var = _k_get_var(env, env->cur_token->str);
-
-    if (var == (_k_variable_t *)0x0) {
-        env->log(_k_get_error(env, "Undefined variable or function: %s\n", env->cur_token->str));
-
-        return K_ERROR_UNDECLARED_VARIABLE;
-    }
-
-    /* If the variable is a function, we'll compile a function call.  */
-    if (var->flags & _K_VARIABLE_FLAG_FUNC) {
-        _k_advance_token(env);
-
-        /* Function call.  */
-        if (env->cur_type == _K_TOKEN_TYPE_NEWEXPRESSION) {
-            _k_advance_token(env);
-            _k_assemble_store_rax_rcx(env);
-
-            unsigned long param_count = 0;
-
-            while (env->cur_type != _K_TOKEN_TYPE_ENDEXPRESSION) {
-                _k_compile_expression(env);
-
-                _k_assemble_parameter_load(env, param_count++);
-
-                if (env->cur_type == _K_TOKEN_TYPE_SEPARATOR) {
-                    _k_advance_token(env);
-                }
-            }
-
-            _k_assemble_call(env, _k_get_function(env, var->name));
-            _k_assemble_load_rax_rcx(env);
-        }
-
-        /* Return the address of the function.  */
-        else _k_assemble_move(env, var->offset);
-    }
-
-    /* Set value to value pointed to by identifier.  */
-    else _k_assemble_move(env, var->offset);
-
-    _k_advance_token(env);
-
-    return K_ERROR_NONE;
-}
-
-/*
- *     Compiles a new expression.
- *
- *     @param k_env_t    *env       The environment to compile the new expression in.
- *
- *     @return k_compile_error_t    The error code, if any.
- */
-k_compile_error_t _k_compile_new_expression(k_env_t *env) {
-    _k_advance_token(env);
-
-    _k_compile_expression(env);
-
-    if (env->cur_type == _K_TOKEN_TYPE_ENDEXPRESSION) {
-        _k_advance_token(env);
-    } else return K_ERROR_INVALID_ENDEXPRESSION;
-
-    return K_ERROR_NONE;
-}
-
-/*
- *    Compiles an operator.
- *
- *    @param k_env_t    *env       The environment to compile the operator in.
- *
- *    @return k_compile_error_t    The error code, if any.
- */
-k_compile_error_t _k_compile_operator(k_env_t *env) {
-    const char *op = env->cur_token->str;
-    _k_token_t *lh = env->cur_token - 1;
-
-    _k_advance_token(env);
-
-    _k_op_type_e type;
-
-    for (unsigned long i = 0; i < ARRAY_SIZE(_operator_table); i++) {
-        if (strcmp(op, _operator_table[i].operator) == 0) {
-            type = _operator_table[i].type;
-            break;
-        }
-    }
-
-    switch (type) {
-        case _K_OP_ADD:
-            /* 
-            *    LH should be already in arithmetic register, 
-            *    so we'll move into another register, and then 
-            *    add to arithmetic register after compiling the next expression. 
-            */
-            _k_assemble_mov_rcx_rax(env);
-            _k_compile_expression(env);
-            _k_assemble_addition(env);
-            break;
-        
-        case _K_OP_SUB:
-            _k_assemble_mov_rcx_rax(env);
-            _k_compile_expression(env);
-            _k_assemble_swap_rax_rcx(env);
-            _k_assemble_subtraction(env);
-            break;
-
-        case _K_OP_MUL:
-            _k_assemble_mov_rcx_rax(env);
-            _k_compile_expression(env);
-            _k_assemble_multiplication(env);
-            break;
-
-        case _K_OP_DIV:
-            _k_assemble_mov_rcx_rax(env);
-            _k_compile_expression(env);
-            _k_assemble_swap_rax_rcx(env);
-            _k_assemble_division(env);
-            break;
-
-        case _K_OP_MOD:
-            _k_assemble_mov_rcx_rax(env);
-            _k_compile_expression(env);
-            _k_assemble_swap_rax_rcx(env);
-            _k_assemble_division(env);
-            _k_assemble_mov_rdx_rax(env);
-            break;
-
-        case _K_OP_L:
-        case _K_OP_LE:
-        case _K_OP_G:
-        case _K_OP_GE:
-        case _K_OP_E:
-        case _K_OP_NE:
-            _k_assemble_mov_rcx_rax(env);
-            _k_compile_expression(env);
-            _k_assemble_comparison(env, type);
-            break;
-
-        case _K_OP_AND:
-            break;
-
-        case _K_OP_OR:
-            break;
-
-        case _K_OP_NOT:
-            break;
-
-        case _K_OP_NEG:
-            break;
-
-        case _K_OP_ASSIGN:
-            _k_compile_expression(env);
-
-            /* Assembly generated should put arithmetic register into local address. */
-            _k_assemble_assignment(env, _k_get_var(env, lh->str)->offset);
-            break;
-    }
-
-    return K_ERROR_NONE;
-}
-
-_k_grammar_t _expression_grammar[] = {
-    {_K_TOKEN_TYPE_NUMBER, _k_compile_number},
-    {_K_TOKEN_TYPE_STRING, _k_compile_string},
-    {_K_TOKEN_TYPE_IDENTIFIER, _k_compile_identifier},
-    {_K_TOKEN_TYPE_NEWEXPRESSION, _k_compile_new_expression},
-    {_K_TOKEN_TYPE_OPERATOR, _k_compile_operator},
-};
-
-/*
- *    Compiles an expression.
- *
- *    @param k_env_t    *env       The environment to parse the expression in.
- */
-void _k_compile_expression(k_env_t *env) {
-    _k_token_type_e *type      = &env->cur_type;
-    _k_token_t      *prev      = env->cur_token;
-
-    do {
-        prev = env->cur_token;
-
-        /* Iterate through the grammar table and try to find a match.  */
-        for (unsigned long i = 0; i < ARRAY_SIZE(_expression_grammar); i++) {
-            if (*type == _expression_grammar[i].type) {
-                _expression_grammar[i].compile(env);
-                break;
-            }
-        }
-    /* If it can't find anything to parse, we're probably no longer in expression land.  */
-    } while (prev != env->cur_token);
-}
-
-/*
- *    Compiles a new statement.
- *
- *    @param k_env_t    *env       The environment to compile the new statement in.
- * 
- *    @return k_compile_error_t    The error code, if any.
- */
-k_compile_error_t _k_compile_new_statement(k_env_t *env) {
-    _k_advance_token(env);
-
-    _k_compile_statement(env);
-
-    return K_ERROR_NONE;
-}
-
-/*
- *    Compiles a keyword.
- *
- *    @param k_env_t    *env       The environment to compile the keyword in.
- * 
- *    @return k_compile_error_t    The error code, if any.
- */
-k_compile_error_t _k_compile_keyword(k_env_t *env) {
-    char *keyword = _k_get_token_str(env);
-
-    _k_advance_token(env);
-
-    if (strcmp(keyword, "if") == 0) {
-        /* Hold on to the start address.  */
-        unsigned long old = env->runtime->size;
-
-        /* Create while condition.  */
-        _k_compile_expression(env);
-        
-        /* Address to write jump into after statement.  */
-        char *offset = _k_assemble_while(env);
-
-        /* Write statement and jump to check condition again. */
-        _k_compile_statement(env);
-
-        /* Update initial condition bytecode with exit address.  */
-        long int address = (env->runtime->size - 0x25) - old;
-        memcpy(offset, &address, 4);
-    }
-
-    else if (strcmp(keyword, "else") == 0) {
-
-    }
-
-    else if (strcmp(keyword, "while") == 0) {
-        /* Hold on to the start address.  */
-        unsigned long old = env->runtime->size;
-
-        /* Create while condition.  */
-        _k_compile_expression(env);
-        
-        /* Address to write jump into after statement.  */
-        char *offset = _k_assemble_while(env);
-
-        /* Write statement and jump to check condition again. */
-        _k_compile_statement(env);
-        _k_assemble_jump(env, env->runtime->mem + old);
-
-        /* Update initial condition bytecode with exit address.  */
-        long int address = (env->runtime->size - 0x25) - old;
-        memcpy(offset, &address, 4);
-    }
-
-    else if (strcmp(keyword, "return") == 0) {
-        /* The final expression will already be in RAX, easy as pie.  */
-        _k_compile_expression(env);
-        _k_assemble_return(env);
-
-        if (env->cur_type == _K_TOKEN_TYPE_ENDLINE) {
-            _k_advance_token(env);
-        }
-
-        else {
-            env->log(_k_get_error(env, "Expected endline after return statement, got %s", _k_get_token_str(env)));
-
-            _k_advance_token(env);
-
-            return K_ERROR_UNEXPECTED_TOKEN;
-        }
-    }
-
-    return K_ERROR_NONE;
-}
-
-/*
- *    Compiles a declaration.
- *
- *    @param k_env_t    *env       The environment to compile the declaration in.
- * 
- *    @return k_compile_error_t    The error code, if any.
- */
-k_compile_error_t _k_compile_declaration(k_env_t *env) {
-    char          *type = _k_get_token_str(env);
-    unsigned long  size = _k_deduce_size(type);
-
-    _k_advance_token(env);
-
-    if (env->cur_type != _K_TOKEN_TYPE_DECLARATOR) {
-        _k_revert_token(env);
-
-        /* If there is no declaration, then it must be an expression.  */
-        _k_compile_expression(env);
-
-        return K_ERROR_NONE;
-    }
-
-    /* Declaration.  */
-    _k_advance_token(env);
-
-    if (env->cur_type != _K_TOKEN_TYPE_IDENTIFIER) {
-        env->log(_k_get_error(env, "Expected identifier after declarator, got %s", _k_get_token_str(env)));
-
-        return K_ERROR_INVALID_DECLARATION;
-    }
-
-    _k_variable_t var = {
-        .name   = _k_get_token_str(env),
-        .type   = type,
-        .offset = _base_offset += size,
-        .flags  = 0x0,
-        .size   = size,
-    };
-
-    _k_add_var(env, &var, 0);
-    _k_advance_token(env);
-
-    /* Check for variable definition.  */
-    if (env->cur_type == _K_TOKEN_TYPE_OPERATOR &&
-        strcmp(_k_get_token_str(env), "=") == 0) {
-        _k_advance_token(env);
-        _k_compile_expression(env);
-        _k_assemble_assignment(env, var.offset);
-    }
-
-    else if (env->cur_type != _K_TOKEN_TYPE_ENDLINE) {
-        env->log(_k_get_error(env, "Expected assignment operator, got %s", _k_get_token_str(env)));
-
-        _k_advance_token(env);
-
-        return K_ERROR_JUNK_AFTER_DECLARATION;
-    }
-
-    return K_ERROR_NONE;
-}
-
-/*
- *    Compiles an endline.
- *
- *    @param k_env_t    *env       The environment to compile the endline in.
- * 
- *    @return k_compile_error_t    The error code, if any.
- */
-k_compile_error_t _k_compile_endline(k_env_t *env) {
-    _k_advance_token(env);
-
-    return K_ERROR_NONE;
-}
-
-_k_grammar_t _statement_grammar[] = {
-    {_K_TOKEN_TYPE_NEWSTATEMENT, _k_compile_new_statement},
-    {_K_TOKEN_TYPE_KEYWORD, _k_compile_keyword},
-    {_K_TOKEN_TYPE_IDENTIFIER, _k_compile_declaration},
-    {_K_TOKEN_TYPE_ENDLINE, _k_compile_endline},
-};
-
-/*
- *    Compiles a statement.
- *
- *    @param k_env_t    *env       The environment to parse the statement in.
- */
-void _k_compile_statement(k_env_t *env) {
-    _k_token_t      **tok  = &env->cur_token;
-    _k_token_type_e *type  = &env->cur_type;
-
-    _k_advance_token(env);
-
-    do {
-        /* Iterate through the grammar table and try to find a match.  */
-        for (unsigned long i = 0; i < ARRAY_SIZE(_statement_grammar); i++) {
-            if (*type == _statement_grammar[i].type) {
-                _statement_grammar[i].compile(env);
-                break;
-            }
-        }
-
-    } while (*type != _K_TOKEN_TYPE_ENDSTATEMENT);
-
-    _k_advance_token(env);
-}
-
-/*
  *    Compiles a KAPPA source file.
  *
  *    @param k_env_t    *env       The environment to compile the source in.
  *    @param const char *source    The source to compile.
+ * 
+ *    @return k_build_error_t    The error code.
  */
-void _k_compile(k_env_t *env, const char *source) {
+k_build_error_t _k_compile(k_env_t *env, const char *source) {
     _k_create_runtime(env, source);
 
     env->cur_token = &env->lexer->tokens[0];
     env->cur_type  =  env->cur_token->tokenable->type;
 
     while (env->cur_token->tokenable->type != _K_TOKEN_TYPE_EOF) {
-        k_compile_error_t ret = _k_compile_global_declaration(env, source);
+        k_build_error_t ret = _k_compile_global_declaration(env, source);
 
-        switch (ret) {
-            case K_ERROR_NONE:
-                break;
-            case K_ERROR_UNEXPECTED_TOKEN:
-                char *token = _k_get_token_str(env);
-                env->log(_k_get_error(env, "Unexpected token %s", token));
-                _k_advance_token(env);
-                break;
-        }
+        if (ret != K_ERROR_NONE) return ret;
     }
 
     void *exec = mmap(0, env->runtime->size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
@@ -705,4 +736,6 @@ void _k_compile(k_env_t *env, const char *source) {
     env->runtime->mem = exec;
 
     printf("%s\n", _k_print_assembly(env));
+
+    return K_ERROR_NONE;
 }

@@ -38,8 +38,10 @@ void k_set_log_handler(k_env_t *env, int (*error)(const char *msg));
  *
  *    @param k_env_t    *env       The environment to compile the source in.
  *    @param const char *source    The source to compile.
+ * 
+ *    @return k_build_error_t    The error code.
  */
-void k_build(k_env_t *env, const char *source);
+k_build_error_t k_build(k_env_t *env, const char *source);
 
 /*
  *    Returns a function pointer to a built function.

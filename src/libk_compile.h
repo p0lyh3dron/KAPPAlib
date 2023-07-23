@@ -54,31 +54,37 @@ char *_k_get_function(k_env_t *env, const char *name);
  *    Compiles an expression.
  *
  *    @param k_env_t    *env       The environment to parse the expression in.
+ *
+ *    @return k_build_error_t    The error code, if any.
  */
-void _k_compile_expression(k_env_t *env);
+k_build_error_t _k_compile_expression(k_env_t *env);
 
 /*
  *    Compiles a statement.
  *
  *    @param k_env_t    *env       The environment to parse the statement in.
+ * 
+ *    @return k_build_error_t    The error code, if any.
  */
-void _k_compile_statement(k_env_t *env);
+k_build_error_t _k_compile_statement(k_env_t *env);
 
 /*
  *    Compiles a global declaration.
  *
  *    @param k_env_t    *env       The environment to parse the function declaration in.
  * 
- *    @return k_compile_error_t    The error code, if any.
+ *    @return k_build_error_t    The error code, if any.
  */
-k_compile_error_t _k_compile_global_declaration(k_env_t *env, const char *source);
+k_build_error_t _k_compile_global_declaration(k_env_t *env, const char *source);
 
 /*
  *    Compiles a KAPPA source file.
  *
  *    @param k_env_t    *env       The environment to compile the source in.
  *    @param const char *source    The source to compile.
+ * 
+ *    @return k_build_error_t    The error code.
  */
-void _k_compile(k_env_t *env, const char *source);
+k_build_error_t _k_compile(k_env_t *env, const char *source);
 
 #endif /* _LIBK_COMPILE_H  */

@@ -131,11 +131,11 @@ typedef enum {
     K_ERROR_INVALID_ENDEXPRESSION,
     K_ERROR_INVALID_DECLARATION,
     K_ERROR_JUNK_AFTER_DECLARATION,
-} k_compile_error_t;
+} k_build_error_t;
 
 typedef struct {
     _k_token_type_e     type;
-    k_compile_error_t (*compile)(k_env_t *env);
+    k_build_error_t (*compile)(k_env_t *env);
 } _k_grammar_t;
 
 #endif /* _LIBK_TYPES_H  */

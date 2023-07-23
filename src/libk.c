@@ -58,8 +58,10 @@ void k_set_log_handler(k_env_t *env, int (*log)(const char *msg)) {
  *
  *    @param k_env_t    *env       The environment to compile the source in.
  *    @param const char *source    The source to compile.
+ * 
+ *    @return k_build_error_t    The error code.
  */
-void k_build(k_env_t *env, const char *source) {
+k_build_error_t k_build(k_env_t *env, const char *source) {
     if (env == (k_env_t*)0x0 || source == (const char*)0x0)
         return;
 
@@ -78,7 +80,7 @@ void k_build(k_env_t *env, const char *source) {
     env->lexer->column = 0;
 
     _k_lexical_analysis(env, source);
-    _k_compile(env, source);
+    return _k_compile(env, source);
 }
 
 /*
