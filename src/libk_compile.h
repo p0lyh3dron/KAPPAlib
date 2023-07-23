@@ -75,7 +75,7 @@ k_build_error_t _k_compile_statement(k_env_t *env);
  * 
  *    @return k_build_error_t    The error code, if any.
  */
-k_build_error_t _k_compile_global_declaration(k_env_t *env, const char *source);
+k_build_error_t _k_compile_loop(k_env_t *env, const char *source);
 
 /*
  *    Compiles a KAPPA source file.

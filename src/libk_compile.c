@@ -584,128 +584,211 @@ k_build_error_t _k_compile_statement(k_env_t *env) {
 }
 
 /*
- *    Compiles a global declaration.
+ *    Prepares the compiler environment for function compilation.
  *
- *    @param k_env_t    *env       The environment to parse the function declaration in.
+ *    @param k_env_t    *env       The environment to prepare.
+ *    @param char       *id        The name of the function.
  * 
  *    @return k_build_error_t    The error code, if any.
  */
-k_build_error_t _k_compile_global_declaration(k_env_t *env, const char *source) {
-    unsigned long    i      = 0;
-    _k_token_type_e *type   = &env->cur_type;
-    char            *id     = (char *)0x0;
-    char            *param  = (char *)0x0;
+k_build_error_t _k_prepare_function_compile(k_env_t *env, char *id) {
+    env->runtime->function_table = realloc(env->runtime->function_table, sizeof(_k_function_t) * (env->runtime->function_count + 1));
 
-    while (*type == _K_TOKEN_TYPE_ENDLINE)
+    env->cur_function = &env->runtime->function_table[env->runtime->function_count++];
+
+    env->cur_function->name   = id;
+    env->cur_function->source = env->runtime->size;
+    env->cur_function->size   = 0;
+}
+
+/*
+ *    Compiles a function declaration.
+ *
+ *    @param k_env_t    *env       The environment to parse the function declaration in.
+ *
+ *    @return k_build_error_t    The error code, if any.
+ */
+k_build_error_t _k_compile_function_declaration(k_env_t *env) {
+    _k_advance_token(env);
+
+    while (env->cur_type != _K_TOKEN_TYPE_ENDEXPRESSION) {
+        if (env->cur_type != _K_TOKEN_TYPE_IDENTIFIER) {
+            env->log(_k_get_error(env, "Expected identifier, got %s", _k_get_token_str(env)));
+            return K_ERROR_UNEXPECTED_TOKEN;
+        }
+
+        char          *type       = _k_get_token_str(env);
+        unsigned long  param_size = _k_deduce_size(_k_get_token_str(env));
+
         _k_advance_token(env);
 
-    if (*type == _K_TOKEN_TYPE_IDENTIFIER) {
-        _k_advance_token(env);
-    } else return K_ERROR_UNEXPECTED_TOKEN;
-
-    if (*type == _K_TOKEN_TYPE_DECLARATOR) {
-        _k_advance_token(env);
-    } else return K_ERROR_UNEXPECTED_TOKEN;
-
-    if (*type == _K_TOKEN_TYPE_IDENTIFIER) {
-        id = _k_get_token_str(env);
+        if (env->cur_type != _K_TOKEN_TYPE_DECLARATOR) {
+            env->log(_k_get_error(env, "Expected declarator, got %s", _k_get_token_str(env)));
+            return K_ERROR_UNEXPECTED_TOKEN;
+        }
 
         _k_advance_token(env);
-    } else return K_ERROR_UNEXPECTED_TOKEN;
 
-    if (*type == _K_TOKEN_TYPE_OPERATOR) {
-        /* Global variable declaration with value.  */
-        _k_advance_token(env);
-        _K_COMPILE_EXP(env);
-
-        if (*type == _K_TOKEN_TYPE_ENDLINE) {
-            _k_advance_token(env);
-        } else return K_ERROR_UNEXPECTED_TOKEN;
-
-    } 
-    
-    else if (*type == _K_TOKEN_TYPE_ENDLINE) {
-        /* Global variable declaration without value.  */
-        _k_advance_token(env);
-    } 
-    
-    else if (*type == _K_TOKEN_TYPE_NEWEXPRESSION) {
-        /* Global function declaration.  */
-        _k_advance_token(env);
-        
-        while (*type != _K_TOKEN_TYPE_ENDEXPRESSION) {
-            if (*type == _K_TOKEN_TYPE_IDENTIFIER) {
-                _var_size = _k_deduce_size(_k_get_token_str(env));
-
-                _k_advance_token(env);
-            } else return K_ERROR_UNEXPECTED_TOKEN;
-
-            if (*type == _K_TOKEN_TYPE_DECLARATOR) {
-                _k_advance_token(env);
-            } else return K_ERROR_UNEXPECTED_TOKEN;
-
-            if (*type == _K_TOKEN_TYPE_IDENTIFIER) {
-                _k_variable_t var = {
-                    .name   = _k_get_token_str(env),
-                    .type   = "param",
-                    .offset = _base_offset += _var_size,
-                    .flags  = 0x0,
-                    .size   = _var_size,
-                };
-
-                _k_add_var(env, &var, 0);
-                
-                _k_advance_token(env);
-            } else return K_ERROR_UNEXPECTED_TOKEN;
-
-            if (*type == _K_TOKEN_TYPE_SEPARATOR) {
-                _k_advance_token(env);
-            }
+        if (env->cur_type != _K_TOKEN_TYPE_IDENTIFIER) {
+            env->log(_k_get_error(env, "Expected identifier, got %s", _k_get_token_str(env)));
+            return K_ERROR_UNEXPECTED_TOKEN;
         }
 
         _k_variable_t var = {
-            .name   = id,
-            .type   = "function",
-            .offset = 0x0,
-            .flags  = _K_VARIABLE_FLAG_FUNC,
-            .size   = 0x0,
+            .name   = _k_get_token_str(env),
+            .type   = type,
+            .offset = _base_offset += param_size,
+            .flags  = 0x0,
+            .size   = param_size,
         };
 
         _k_advance_token(env);
 
+        if (env->cur_type == _K_TOKEN_TYPE_SEPARATOR) {
+            _k_advance_token(env);
+        }
+
+        _k_add_var(env, &var, 0);
+    }
+
+    _k_advance_token(env);
+
+    _k_assemble_prelude(env);
+
+    unsigned long old = env->runtime->size;
+
+    for (unsigned long i = 0; i < env->runtime->local_count; i++) {
+        _k_variable_t *param = &env->runtime->locals[i];
+
+        _k_assemble_parameter_store(env, param->offset, i);
+    }
+
+    _K_COMPILE_STMT(env);
+
+    _k_assemble_allocate(env, _base_offset, old);
+
+    if (env->runtime->local_count > 0) {
+        free(env->runtime->locals);
+    }
+
+    env->runtime->locals      = (_k_function_t *)0x0;
+    env->runtime->local_count = 0;
+
+    return K_ERROR_NONE;
+}
+
+/*
+ *    Compiles a global declaration.
+ *
+ *    @param k_env_t    *env       The environment to parse the global declaration in.
+ * 
+ *    @return k_build_error_t    The error code, if any.
+ */
+k_build_error_t _k_compile_global_declaration(k_env_t *env) {
+    /* Get info about return type.  */
+    char *type = _k_get_token_str(env);
+
+    _k_advance_token(env);
+
+    if (env->cur_type != _K_TOKEN_TYPE_DECLARATOR) {
+        env->log(_k_get_error(env, "Expected declarator after type, got %s", _k_get_token_str(env)));
+        return K_ERROR_INVALID_DECLARATION;
+    }
+
+    _k_advance_token(env);
+
+    if (env->cur_type != _K_TOKEN_TYPE_IDENTIFIER) {
+        env->log(_k_get_error(env, "Expected identifier after declarator, got %s", _k_get_token_str(env)));
+        return K_ERROR_INVALID_DECLARATION;
+    }
+
+    _k_variable_t var = {
+        .name   = _k_get_token_str(env),
+        .type   = type,
+        .offset = 0,
+        .flags  = 0x0,
+        .size   = _k_deduce_size(type),
+    };
+
+    _k_advance_token(env);
+
+    if (env->cur_type == _K_TOKEN_TYPE_NEWEXPRESSION) {
+        var.flags |= _K_VARIABLE_FLAG_FUNC;
+        var.size   = 0;
+
         _k_add_var(env, &var, 1);
 
-        env->runtime->function_table = realloc(env->runtime->function_table, sizeof(_k_function_t) * (env->runtime->function_count + 1));
+        _k_prepare_function_compile(env, var.name);
 
-        env->cur_function = &env->runtime->function_table[env->runtime->function_count++];
+        return _k_compile_function_declaration(env);
+    }
 
-        env->cur_function->name   = id;
-        env->cur_function->source = env->runtime->size;
-        env->cur_function->size   = 0;
+    if (env->cur_type == _K_TOKEN_TYPE_OPERATOR) {
+        if (strncmp(_k_get_token_str(env), "=", 1) != 0) {
+            env->log(_k_get_error(env, "Expected assignment operator, got %s", _k_get_token_str(env)));
+            return K_ERROR_EXPECTED_ASSIGNMENT;
+        } 
 
-        _k_assemble_prelude(env);
-
-        unsigned long old = env->runtime->size;
-
-        for (i = 0; i < env->runtime->local_count; i++) {
-            _k_variable_t *param = &env->runtime->locals[i];
-
-            _k_assemble_parameter_store(env, param->offset, i);
+        _k_advance_token(env);
+        
+        /* Initialize global and assign constant.  */
+        if (env->cur_type != _K_TOKEN_TYPE_NUMBER ||
+            env->cur_type != _K_TOKEN_TYPE_STRING ||
+            env->cur_type != _K_TOKEN_TYPE_IDENTIFIER) {
+            env->log(_k_get_error(env, "Expected constant after assignment operator, got %s", _k_get_token_str(env)));
+            return K_ERROR_EXPECTED_CONSTANT;
         }
+    }
 
-        _K_COMPILE_STMT(env);
+    else if (env->cur_type != _K_TOKEN_TYPE_ENDLINE) {
+        env->log(_k_get_error(env, "Expected assignment operator or endline, got %s", _k_get_token_str(env)));
+        return K_ERROR_JUNK_AFTER_DECLARATION;
+    }
 
-        _k_assemble_allocate(env, _base_offset, old);
+    return K_ERROR_NONE;
+}
 
-        if (env->runtime->local_count > 0) {
-            free(env->runtime->locals);
+/*
+ *    Compiles a global keyword.
+ *
+ *    @param k_env_t    *env       The environment to parse the global keyword in.
+ * 
+ *    @return k_build_error_t    The error code, if any.
+ */
+k_build_error_t _k_compile_global_keyword(k_env_t *env) {
+    /* Allow some global keywords like import, etc.  */
+    _k_advance_token(env);
+
+    return K_ERROR_NONE;
+}
+
+_k_grammar_t _loop_grammar[] = {
+    {_K_TOKEN_TYPE_IDENTIFIER, _k_compile_global_declaration},
+    {_K_TOKEN_TYPE_KEYWORD,    _k_compile_global_keyword},
+    {_K_TOKEN_TYPE_ENDLINE,    _k_compile_endline},
+};
+
+/*
+ *    Compilation loop.
+ *
+ *    @param k_env_t    *env       The environment to parse the function declaration in.
+ * 
+ *    @return k_build_error_t      The error code, if any.
+ */
+
+k_build_error_t _k_compile_loop(k_env_t *env) {
+    while (env->cur_type != _K_TOKEN_TYPE_EOF) {
+        for (unsigned long i = 0; i < ARRAY_SIZE(_loop_grammar); i++) {
+            if (env->cur_type == _loop_grammar[i].type) {
+                k_build_error_t ret = _loop_grammar[i].compile(env);
+
+                if (ret != K_ERROR_NONE) return ret;
+
+                break;
+            }
         }
-
-        env->runtime->locals      = (_k_function_t *)0x0;
-        env->runtime->local_count = 0;
-
-    } else return K_ERROR_UNEXPECTED_TOKEN;
-
+    }
+    
     return K_ERROR_NONE;
 }
 
@@ -723,19 +806,16 @@ k_build_error_t _k_compile(k_env_t *env, const char *source) {
     env->cur_token = &env->lexer->tokens[0];
     env->cur_type  =  env->cur_token->tokenable->type;
 
-    while (env->cur_token->tokenable->type != _K_TOKEN_TYPE_EOF) {
-        k_build_error_t ret = _k_compile_global_declaration(env, source);
+    k_build_error_t ret = _k_compile_loop(env);
 
-        if (ret != K_ERROR_NONE) return ret;
-    }
-
+    char *old  = env->runtime->mem;
     void *exec = mmap(0, env->runtime->size, PROT_READ | PROT_WRITE | PROT_EXEC, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
 
     memcpy(exec, env->runtime->mem, env->runtime->size);
-
     env->runtime->mem = exec;
+    free(old);
 
     printf("%s\n", _k_print_assembly(env));
 
-    return K_ERROR_NONE;
+    return ret;
 }

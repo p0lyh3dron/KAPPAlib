@@ -178,6 +178,15 @@ void k_destroy_env(k_env_t *env) {
             }
             free(env->lexer);
         }
+
+        if (env->runtime != (_k_runtime_t*)0x0) {
+            if (env->runtime->mem != (char*)0x0)
+                munmap(env->runtime->mem, env->runtime->size);
+            if (env->runtime->function_table != (_k_function_t*)0x0)
+                free(env->runtime->function_table);
+            free(env->runtime);
+        }
+
         free(env);
     }
 }
