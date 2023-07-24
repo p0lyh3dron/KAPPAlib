@@ -15,7 +15,7 @@ const _k_tokenable_t _tokenables[] = {
     {_K_TOKEN_TYPE_UNKNOWN,       (const char*)0x0,                                                  _K_TOKEN_TERMINATABLE_UNKNOWN},
     {_K_TOKEN_TYPE_EOF,           "\0",                                                              _K_TOKEN_TERMINATABLE_SINGLE},
     {_K_TOKEN_TYPE_IDENTIFIER,    "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_", _K_TOKEN_TERMINATABLE_MULTIPLE},
-    {_K_TOKEN_TYPE_NUMBER,        "0123456789",                                                      _K_TOKEN_TERMINATABLE_MULTIPLE},
+    {_K_TOKEN_TYPE_NUMBER,        "0123456789.",                                                      _K_TOKEN_TERMINATABLE_MULTIPLE},
     {_K_TOKEN_TYPE_STRING,        "\"",                                                              _K_TOKEN_TERMINATABLE_REOCCUR},
     {_K_TOKEN_TYPE_OPERATOR,      "+-*/%&|!^~<>=",                                                   _K_TOKEN_TERMINATABLE_MULTIPLE},
     {_K_TOKEN_TYPE_COMMENT,       "$",                                                               _K_TOKEN_TERMINATABLE_REOCCUR},

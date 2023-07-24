@@ -164,17 +164,30 @@ void _k_assemble_call(k_env_t *env, unsigned long offset) {
 /*
  *    Generates assembly for an assignment.
  *
- *    @param k_env_t *env           The environment to generate the assignment for.
+ *    @param k_env_t      *env      The environment to generate the assignment for.
  *    @param unsigned long offset   The offset of the variable to assign to.
+ *    @param unsigned long size     The size of the variable to assign to, in bytes.
+ *    @param char          flt      Whether or not the variable is a float.
  */
-void _k_assemble_assignment(k_env_t *env, unsigned long offset) {
+void _k_assemble_assignment(k_env_t *env, unsigned long offset, unsigned long size, char flt) {
     /*
      *     48 89 85 00 00 00 01   mov  [rbp + offset], rax
      */
-    const char *assignment = "\x48\x89\x85";
-    signed long offset_signed = 0xFFFFFFFF - offset + 1;
+    const char   *assignment    = (const char*)0x0;
+    signed long   offset_signed = 0xFFFFFFFF - offset + 1;
 
-    _k_append_bytecode(env, (char *)assignment, 3);
+    if (flt == 0) {
+        if (size == 8)      assignment = "\x48\x89\x85";     /* int   64->64 */
+        else if (size == 4) assignment = "\x89\x85";         /* int   64->32 */
+        else if (size == 2) assignment = "\x66\x89\x85";     /* int   64->16 */
+        else                assignment = "\x88\x85";         /* int   64->8  */
+    }
+    else {
+        if (size == 8) assignment = "\xF2\x0F\x11\x85"; /* float 64->64  */
+        else           assignment = "\xF3\x0F\x11\x85"; /* float 64->32  */
+    }
+
+    _k_append_bytecode(env, (char *)assignment, strlen(assignment));
     _k_append_bytecode(env, (char *)&offset_signed, 4);
 }
 
@@ -200,15 +213,28 @@ void _k_assemble_assignment_global(k_env_t *env, unsigned long offset) {
  *
  *    @param k_env_t *env    The environment to generate the move for.
  *    @param unsigned long   The offset of the variable to move.
+ *    @param unsigned long   The size of the variable to move, in bytes.
+ *    @param char            flt      Whether or not the variable is a float.
  */
-void _k_assemble_move(k_env_t *env, unsigned long offset) {
+void _k_assemble_move(k_env_t *env, unsigned long offset, unsigned long size, char flt) {
     /*
      *     48 8B 85 00 00 00 01   mov  reg, [rbp + offset]
      */
-    const char *move = "\x48\x8B\x85";
-    signed long offset_signed = 0xFFFFFFFF - offset + 1;
+    const char   *move          = (const char*)0x0;
+    signed long   offset_signed = 0xFFFFFFFF - offset + 1;
 
-    _k_append_bytecode(env, (char *)move, 3);
+    if (flt == 0) {
+        if (size == 8)      move = "\x48\x8B\x85";     /* int   64->64 */
+        else if (size == 4) move = "\x8B\x85";         /* int   32->64 */
+        else if (size == 2) move = "\x66\x8B\x85";     /* int   16->64 */
+        else                move = "\x8A\x85";         /* int   8->64  */
+    }
+    else {
+        if (size == 8) move = "\xF2\x0F\x10\x85"; /* float 64->64  */
+        else           move = "\xF3\x0F\x10\x85"; /* float 32->64  */
+    }
+
+    _k_append_bytecode(env, (char *)move, strlen(move));
     _k_append_bytecode(env, (char *)&offset_signed, 4);
 }
 

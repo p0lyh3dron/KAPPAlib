@@ -227,7 +227,7 @@ k_build_error_t _k_compile_identifier(k_env_t *env) {
         }
 
         /* Return the address of the function.  */
-        else _k_assemble_move(env, var->offset);
+        else _k_assemble_move(env, var->offset, var->size, var->flags & _K_VARIABLE_FLAG_FLOAT);
     }
 
     /* Set value to value pointed to by identifier.  */
@@ -235,7 +235,7 @@ k_build_error_t _k_compile_identifier(k_env_t *env) {
         if (var->flags & _K_VARIABLE_FLAG_GLOBAL) 
             _k_assemble_move_global(env, env->runtime->size - var->offset);
 
-        else _k_assemble_move(env, var->offset);
+        else _k_assemble_move(env, var->offset, var->size, var->flags & _K_VARIABLE_FLAG_FLOAT);
     }
 
     _k_advance_token(env);
@@ -360,7 +360,7 @@ k_build_error_t _k_compile_operator(k_env_t *env) {
             if (var->flags & _K_VARIABLE_FLAG_GLOBAL)
                 _k_assemble_assignment_global(env, env->runtime->size - var->offset);
 
-            else _k_assemble_assignment(env, var->offset);
+            else _k_assemble_assignment(env, var->offset, var->size, var->flags & _K_VARIABLE_FLAG_FLOAT);
 
             break;
     }
@@ -461,6 +461,8 @@ k_build_error_t _k_compile_keyword(k_env_t *env) {
 
         /* Create while condition.  */
         _K_COMPILE_EXP(env);
+
+        unsigned long condition = env->runtime->size;
         
         /* Address to write jump into after statement.  */
         char *offset = _k_assemble_while(env);
@@ -470,7 +472,7 @@ k_build_error_t _k_compile_keyword(k_env_t *env) {
         _k_assemble_jump(env, env->runtime->mem + old);
 
         /* Update initial condition bytecode with exit address.  */
-        long int address = (env->runtime->size - 0x25) - old;
+        long int address = (env->runtime->size - condition) - 0xa;
         memcpy(offset, &address, 4);
     }
 
@@ -542,7 +544,7 @@ k_build_error_t _k_compile_declaration(k_env_t *env) {
         strcmp(_k_get_token_str(env), "=") == 0) {
         _k_advance_token(env);
         _K_COMPILE_EXP(env);
-        _k_assemble_assignment(env, var.offset);
+        _k_assemble_assignment(env, var.offset, var.size, var.flags & _K_VARIABLE_FLAG_FLOAT);
     }
 
     else if (env->cur_type != _K_TOKEN_TYPE_ENDLINE) {

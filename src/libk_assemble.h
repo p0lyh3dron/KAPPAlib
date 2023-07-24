@@ -72,10 +72,12 @@ void _k_assemble_call(k_env_t *env, unsigned long offset);
 /*
  *    Generates assembly for an assignment.
  *
- *    @param k_env_t *env           The environment to generate the assignment for.
+ *    @param k_env_t      *env      The environment to generate the assignment for.
  *    @param unsigned long offset   The offset of the variable to assign to.
+ *    @param unsigned long size     The size of the variable to assign to, in bytes.
+ *    @param char          flt      Whether or not the variable is a float.
  */
-void _k_assemble_assignment(k_env_t *env, unsigned long offset);
+void _k_assemble_assignment(k_env_t *env, unsigned long offset, unsigned long size, char flt);
 
 /*
  *    Generates assembly for a global assignment.
@@ -90,8 +92,10 @@ void _k_assemble_assignment_global(k_env_t *env, unsigned long offset);
  *
  *    @param k_env_t *env    The environment to generate the move for.
  *    @param unsigned long   The offset of the variable to move.
+ *    @param unsigned long   The size of the variable to move, in bytes.
+ *    @param char            flt      Whether or not the variable is a float.
  */
-void _k_assemble_move(k_env_t *env, unsigned long offset);
+void _k_assemble_move(k_env_t *env, unsigned long offset, unsigned long size, char flt);
 
 /*
  *    Generates assembly for a move from a global into a register.

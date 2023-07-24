@@ -69,6 +69,7 @@ typedef struct {
 
 #define _K_VARIABLE_FLAG_FUNC   (1 << 0)
 #define _K_VARIABLE_FLAG_GLOBAL (1 << 1)
+#define _K_VARIABLE_FLAG_FLOAT  (1 << 2)
 
 typedef struct {
     char          *name;
