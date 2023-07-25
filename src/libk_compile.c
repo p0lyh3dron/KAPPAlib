@@ -441,14 +441,14 @@ k_build_error_t _k_compile_keyword(k_env_t *env) {
         _K_COMPILE_EXP(env);
         
         /* Address to write jump into after statement.  */
-        char *offset = _k_assemble_while(env);
+        unsigned long offset = _k_assemble_while(env);
 
         /* Write statement and jump to check condition again. */
         _K_COMPILE_STMT(env);
 
         /* Update initial condition bytecode with exit address.  */
         long int address = (env->runtime->size - 0x25) - old;
-        memcpy(offset, &address, 4);
+        memcpy(env->runtime->mem + offset, &address, 4);
     }
 
     else if (strcmp(keyword, "else") == 0) {
@@ -465,7 +465,7 @@ k_build_error_t _k_compile_keyword(k_env_t *env) {
         unsigned long condition = env->runtime->size;
         
         /* Address to write jump into after statement.  */
-        char *offset = _k_assemble_while(env);
+        unsigned long offset = _k_assemble_while(env);
 
         /* Write statement and jump to check condition again. */
         _K_COMPILE_STMT(env);
@@ -473,7 +473,7 @@ k_build_error_t _k_compile_keyword(k_env_t *env) {
 
         /* Update initial condition bytecode with exit address.  */
         long int address = (env->runtime->size - condition) - 0xa;
-        memcpy(offset, &address, 4);
+        memcpy(env->runtime->mem + offset, &address, 4);
     }
 
     else if (strcmp(keyword, "return") == 0) {

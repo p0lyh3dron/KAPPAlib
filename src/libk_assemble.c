@@ -468,9 +468,9 @@ void _k_assemble_comparison(k_env_t *env, _k_op_type_e cmp) {
  *
  *    @param k_env_t *env    The environment to generate the while for.
  * 
- *    @return char *         The address of the je offset.
+ *    @return unsigned long  The offset of the je offset.
  */
-char *_k_assemble_while(k_env_t *env) {
+unsigned long _k_assemble_while(k_env_t *env) {
     /*
      *    48 83 F8 00          cmp rax, 0
      *    0F 84 00 00 00 00    je  end
@@ -480,7 +480,7 @@ char *_k_assemble_while(k_env_t *env) {
 
     _k_append_bytecode(env, (char *)while_start, 10);
 
-    return env->runtime->mem + env->runtime->size - 4;
+    return env->runtime->size - 4;
 }
 
 /*

@@ -189,9 +189,9 @@ void _k_assemble_comparison(k_env_t *env, _k_op_type_e cmp);
  *
  *    @param k_env_t *env    The environment to generate the while for.
  * 
- *    @return char *         The address of the je offset.
+ *    @return unsigned long  The offset of the je offset.
  */
-char *_k_assemble_while(k_env_t *env);
+unsigned long _k_assemble_while(k_env_t *env);
 
 /*
  *    Generates assembly for a jump.
