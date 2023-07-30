@@ -43,8 +43,10 @@ void _k_assemble_allocate(k_env_t *env, unsigned long size, unsigned long offset
  *    @param k_env_t *env    The environment to generate the parameter store for.
  *    @param unsigned long   The offset of the parameter to store.
  *    @param unsigned long   The current parameter index.
+ *    @param unsigned long   The size of the parameter to store, in bytes.
+ *    @param char            flt      Whether or not the parameter is a float.
  */
-void _k_assemble_parameter_store(k_env_t *env, unsigned long offset, unsigned long index);
+void _k_assemble_parameter_store(k_env_t *env, unsigned long offset, unsigned long index, unsigned long size, char flt);
 
 /*
  *    Generates a parameter load for a function.
@@ -52,7 +54,7 @@ void _k_assemble_parameter_store(k_env_t *env, unsigned long offset, unsigned lo
  *    @param k_env_t *env    The environment to generate the parameter load for.
  *    @param unsigned long   The current parameter index.
  */
-void _k_assemble_parameter_load(k_env_t *env, unsigned long index);
+void _k_assemble_parameter_load(k_env_t *env, unsigned long index, unsigned long size, char flt);
 
 /*
  *    Pops the parameters off the stack.
@@ -119,6 +121,13 @@ void _k_assemble_mov_integer(k_env_t *env, long integer);
  *    @param k_env_t *env    The environment to generate assembly for.
  */
 void _k_assemble_store_rcx(k_env_t *env);
+
+/*
+ *    Generates assembly to store rax.
+ *
+ *    @param k_env_t *env    The environment to generate assembly for.
+ */
+void _k_assemble_store_rax(k_env_t *env);
 
 /*
  *    Generates assembly to load rcx.

@@ -223,16 +223,18 @@ void _k_create_runtime(k_env_t *env, const char *source) {
     if (env->runtime == (_k_runtime_t*)0x0)
         return;
 
-    env->runtime->mem            = (char*)0x0;
-    env->runtime->size           = 0;
-    env->runtime->function_table = (_k_function_t*)0x0;
-    env->runtime->function_count = 0;
-    env->runtime->locals         = (_k_variable_t*)0x0;
-    env->runtime->local_count    = 0;
-    env->runtime->local_offset   = 0;
-    env->runtime->globals        = (_k_variable_t*)0x0;
-    env->runtime->global_count   = 0;
-    env->runtime->global_offset  = 0;
+    env->runtime->mem             = (char*)0x0;
+    env->runtime->size            = 0;
+    env->runtime->function_table  = (_k_function_t*)0x0;
+    env->runtime->function_count  = 0;
+    env->runtime->operations      = (_k_operation_t*)0x0;
+    env->runtime->operation_count = 0;
+    env->runtime->locals          = (_k_variable_t*)0x0;
+    env->runtime->local_count     = 0;
+    env->runtime->local_offset    = 0;
+    env->runtime->globals         = (_k_variable_t*)0x0;
+    env->runtime->global_count    = 0;
+    env->runtime->global_offset   = 0;
 }
 
 /*
@@ -258,7 +260,7 @@ void _k_lexical_analysis(k_env_t *env, const char *source) {
             const char *id = _k_get_token_str(env);
 
             /* Numerical constant.  */
-            if (strchr(_k_get_tokenable(_K_TOKEN_TYPE_NUMBER)->chars, id[0]) != (char*)0x0) {
+            if (strspn(id, _k_get_tokenable(_K_TOKEN_TYPE_NUMBER)->chars) == strlen(id)) {
                 *tok = _k_get_tokenable(_K_TOKEN_TYPE_NUMBER);
             } 
             

@@ -105,16 +105,26 @@ typedef struct {
 } _k_operator_t;
 
 typedef struct {
+    _k_op_type_e               type;
+    _k_token_t                *lh;
+    _k_token_t                *rh;
+} _k_operation_t;
+
+typedef struct {
     char           *mem;
     unsigned long  size;
     _k_function_t  *function_table;
     unsigned long  function_count;
+    _k_operation_t *operations;
+    unsigned long  operation_count;
     _k_variable_t  *locals;
     unsigned long  local_count;
     unsigned long  local_offset;
     _k_variable_t  *globals;
     unsigned long  global_count;
     unsigned long  global_offset;
+    _k_variable_t  *parameters;
+    unsigned long  parameter_count;
 } _k_runtime_t;
 
 typedef struct {

@@ -24,7 +24,5 @@ u64: fib(u64: n) {
         i = i + 1;
     }
 
-    u32: test = x;
-
-    return test + 1;
+    return x;
 }

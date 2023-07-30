@@ -17,20 +17,6 @@
 
 #include "libk_assemble.h"
 
-const char *_param_regs_str[] = {
-    "\x48\x89\xBD", /* RDI  */
-    "\x48\x89\xB5", /* RSI  */
-    "\x4C\x89\x85", /* R8   */
-    "\x4C\x89\x8D", /* R9   */
-};
-
-const char *_param_regs_ld[] = {
-    "\x48\x89\xC7", /* RDI  */
-    "\x48\x89\xC6", /* RSI  */
-    "\x49\x89\xC0", /* R8   */
-    "\x49\x89\xC1", /* R9   */
-};
-
 /*
  *    Appends bytecode to the current function.
  *
@@ -103,15 +89,77 @@ void _k_assemble_allocate(k_env_t *env, unsigned long size, unsigned long offset
  *    @param k_env_t *env    The environment to generate the parameter store for.
  *    @param unsigned long   The offset of the parameter to store.
  *    @param unsigned long   The current parameter index.
+ *    @param unsigned long   The size of the parameter to store, in bytes.
+ *    @param char            flt Whether or not the parameter is a float.
  */
-void _k_assemble_parameter_store(k_env_t *env, unsigned long offset, unsigned long index) {
+void _k_assemble_parameter_store(k_env_t *env, unsigned long offset, unsigned long index, unsigned long size, char flt) {
     /*
      *     48 89 BD 00 00 00 01   mov  [rbp + offset], reg
      */
-    const char *store = _param_regs_str[index];
+    const char *store = (const char*)0x0;
+    if (flt == 0) {
+        /* RDI  */
+        if (index == 0) {
+            if (size == 8)      store = "\x48\x89\xBD";
+            else if (size == 4) store = "\x89\xBD";
+            else if (size == 2) store = "\x66\x89\xBD";
+            else                store = "\x40\x88\xBD";
+        }
+        
+        /* RSI  */
+        else if (index == 1) {
+            if (size == 8)      store = "\x48\x89\xB5";
+            else if (size == 4) store = "\x89\xB5";
+            else if (size == 2) store = "\x66\x89\xB5";
+            else                store = "\x40\x88\xB5";
+        }
+
+        /* R8   */
+        else if (index == 2) {
+            if (size == 8)      store = "\x4C\x89\x85";
+            else if (size == 4) store = "\x44\x89\x85";
+            else if (size == 2) store = "\x66\x44\x89\x85";
+            else                store = "\x40\x44\x88\x85";
+        }
+
+        /* R9   */
+        else if (index == 3) {
+            if (size == 8)      store = "\x4C\x89\x8D";
+            else if (size == 4) store = "\x44\x89\x8D";
+            else if (size == 2) store = "\x66\x44\x89\x8D";
+            else                store = "\x40\x44\x88\x8D";
+        }
+    }
+
+    else {
+        /* XMM7  */
+        if (index == 0) {
+            if (size == 8) store = "\xF2\x0F\x11\xBD";
+            else           store = "\xF3\x0F\x11\xBD";
+        }
+        
+        /* XMM6  */
+        else if (index == 1) {
+            if (size == 8) store = "\xF2\x0F\x11\xB5";
+            else           store = "\xF3\x0F\x11\xB5";
+        }
+
+        /* XMM5   */
+        else if (index == 2) {
+            if (size == 8) store = "\xF2\x0F\x11\xAD";
+            else           store = "\xF3\x0F\x11\xAD";
+        }
+
+        /* XMM4   */
+        else if (index == 3) {
+            if (size == 8) store = "\xF2\x0F\x11\xA5";
+            else           store = "\xF3\x0F\x11\xA5";
+        }
+    }
+
     signed long offset_signed = 0xFFFFFFFF - offset + 1;
 
-    _k_append_bytecode(env, (char *)store, 3);
+    _k_append_bytecode(env, (char *)store, strlen(store));
     _k_append_bytecode(env, (char *)&offset_signed, 4);
 }
 
@@ -121,13 +169,65 @@ void _k_assemble_parameter_store(k_env_t *env, unsigned long offset, unsigned lo
  *    @param k_env_t *env    The environment to generate the parameter load for.
  *    @param unsigned long   The current parameter index.
  */
-void _k_assemble_parameter_load(k_env_t *env, unsigned long index) {
+void _k_assemble_parameter_load(k_env_t *env, unsigned long index, unsigned long size, char flt) {
     /*
      *     48 8B BD 00 00 00 01   mov  reg, rax
      */
-    const char *load = _param_regs_ld[index];
+    const char *load = (const char*)0x0;
 
-    _k_append_bytecode(env, (char *)load, 3);
+    if (flt == 0) {
+        if (index == 0) {
+            if (size == 8)      load = "\x48\x89\xC7";
+            else if (size == 4) load = "\x89\xC7";
+            else if (size == 2) load = "\x66\x89\xC7";
+            else                load = "\x40\x88\xC7";
+        }
+
+        else if (index == 1) {
+            if (size == 8)      load = "\x48\x89\xD7";
+            else if (size == 4) load = "\x89\xD7";
+            else if (size == 2) load = "\x66\x89\xD7";
+            else                load = "\x40\x88\xD7";
+        }
+
+        else if (index == 2) {
+            if (size == 8)      load = "\x4C\x89\xC7";
+            else if (size == 4) load = "\x44\x89\xC7";
+            else if (size == 2) load = "\x66\x44\x89\xC7";
+            else                load = "\x40\x44\x88\xC7";
+        }
+
+        else if (index == 3) {
+            if (size == 8)      load = "\x4C\x89\xD7";
+            else if (size == 4) load = "\x44\x89\xD7";
+            else if (size == 2) load = "\x66\x44\x89\xD7";
+            else                load = "\x40\x44\x88\xD7";
+        }
+    }
+
+    else {
+        if (index == 0) {
+            if (size == 8) load = "\xF2\x0F\x10\xC7";
+            else           load = "\xF3\x0F\x10\xC7";
+        }
+
+        else if (index == 1) {
+            if (size == 8) load = "\xF2\x0F\x10\xD7";
+            else           load = "\xF3\x0F\x10\xD7";
+        }
+
+        else if (index == 2) {
+            if (size == 8) load = "\xF2\x0F\x10\xCF";
+            else           load = "\xF3\x0F\x10\xCF";
+        }
+
+        else if (index == 3) {
+            if (size == 8) load = "\xF2\x0F\x10\xDF";
+            else           load = "\xF3\x0F\x10\xDF";
+        }
+    }
+
+    _k_append_bytecode(env, (char *)load, strlen(load));
 }
 
 /*
@@ -281,6 +381,20 @@ void _k_assemble_store_rcx(k_env_t *env) {
      *    51          push rcx
      */
     const char *store = "\x51";
+
+    _k_append_bytecode(env, (char *)store, 1);
+}
+
+/*
+ *    Generates assembly to store rax.
+ *
+ *    @param k_env_t *env    The environment to generate assembly for.
+ */
+void _k_assemble_store_rax(k_env_t *env) {
+    /*
+     *    50          push rax
+     */
+    const char *store = "\x50";
 
     _k_append_bytecode(env, (char *)store, 1);
 }
