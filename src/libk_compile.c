@@ -273,13 +273,21 @@ k_build_error_t _k_compile_identifier(k_env_t *env) {
  *     @return k_build_error_t    The error code, if any.
  */
 k_build_error_t _k_compile_new_expression(k_env_t *env) {
-    while (env->cur_type != _K_TOKEN_TYPE_ENDEXPRESSION) {
-        _k_advance_token(env);
+    _k_advance_token(env);
+
+    k_build_error_t ret = _k_compile_expression(env);
+
+    if (ret != K_ERROR_NONE) return ret;
+
+    if (env->cur_type != _K_TOKEN_TYPE_ENDEXPRESSION) {
+        env->log(_k_get_error(env, "Expected end of expression, got %s\n", env->cur_token->str));
+
+        return K_ERROR_INVALID_ENDEXPRESSION;
     }
 
     _k_advance_token(env);
 
-    return K_ERROR_NONE;
+    return ret;
 }
 
 /*
@@ -340,6 +348,55 @@ k_build_error_t _k_compile_token(k_env_t *env, _k_token_t *token) {
 }
 
 /*
+ *    Compiles the operator prelude.
+ *
+ *    @param k_env_t    *env       The environment to compile the operator prelude in.
+ *    @param _k_token_t *lh        The left hand side of the operator.
+ *    @param _k_token_t *rh        The right hand side of the operator.
+ * 
+ *    @return k_build_error_t    The error code, if any.
+ */
+k_build_error_t _k_compile_operator_prelude(k_env_t *env, _k_token_t *lh, _k_token_t *rh) {
+    if (lh == (_k_token_t *)0x0) {
+        _k_assemble_load_rcx(env);
+        _k_assemble_swap_rax_rcx(env);
+    }
+
+    else _k_compile_token(env, lh);
+
+    _k_assemble_mov_rcx_rax(env);
+
+    if (rh == (_k_token_t *)0x0) {
+        _k_assemble_load_rcx(env);
+        _k_assemble_swap_rax_rcx(env);
+    }
+
+    else _k_compile_token(env, rh);
+
+    return K_ERROR_NONE;
+}
+
+/*
+ *    Compiles an operator postlude.
+ *
+ *    @param k_env_t       *env       The environment to compile the operator postlude in.
+ *    @param unsigned long  index     The index of the operator.
+ * 
+ *    @return k_build_error_t    The error code, if any.
+ */
+k_build_error_t _k_compile_operator_postlude(k_env_t *env, unsigned long index) {
+    _k_assemble_store_rax(env);
+
+    if (index > 0)
+        env->runtime->operations[index-1].rh = (_k_token_t *)0x0;
+    
+    if (index < env->runtime->operation_count - 1)
+        env->runtime->operations[index+1].lh = (_k_token_t *)0x0;
+
+    return K_ERROR_NONE;
+}
+
+/*
  *    Compiles an operator.
  *
  *    @param k_env_t    *env       The environment to compile the operator in.
@@ -364,10 +421,11 @@ k_build_error_t _k_compile_operator(k_env_t *env) {
             case _K_OP_GE:
             case _K_OP_E:
             case _K_OP_NE:
-                _k_compile_token(env, lh);
-                _k_assemble_mov_rcx_rax(env);
-                _k_compile_token(env, rh);
+                _k_compile_operator_prelude(env, lh, rh);
+
                 _k_assemble_comparison(env, type);
+
+                _k_compile_operator_postlude(env, i);
                 break;
 
             case _K_OP_AND:
@@ -392,87 +450,30 @@ k_build_error_t _k_compile_operator(k_env_t *env) {
 
         switch (type) {
             case _K_OP_MUL:
-                if (lh == (_k_token_t *)0x0) {
-                    _k_assemble_load_rcx(env);
-                    _k_assemble_swap_rax_rcx(env);
-                }
-
-                else _k_compile_token(env, lh);
-
-                _k_assemble_mov_rcx_rax(env);
-
-                if (rh == (_k_token_t *)0x0) {
-                    _k_assemble_load_rcx(env);
-                    _k_assemble_swap_rax_rcx(env);
-                }
-
-                else _k_compile_token(env, rh);
+                _k_compile_operator_prelude(env, lh, rh);
 
                 _k_assemble_multiplication(env);
-                _k_assemble_store_rax(env);
-
-                if (i > 0)
-                    env->runtime->operations[i-1].rh = (_k_token_t *)0x0;
                 
-                if (i < env->runtime->operation_count - 1)
-                    env->runtime->operations[i+1].lh = (_k_token_t *)0x0;
+                _k_compile_operator_postlude(env, i);
                 break;
 
             case _K_OP_DIV:
-                if (lh == (_k_token_t *)0x0) {
-                    _k_assemble_load_rcx(env);
-                    _k_assemble_swap_rax_rcx(env);
-                }
-
-                else _k_compile_token(env, lh);
-
-                _k_assemble_mov_rcx_rax(env);
-
-                if (rh == (_k_token_t *)0x0) {
-                    _k_assemble_load_rcx(env);
-                    _k_assemble_swap_rax_rcx(env);
-                }
-
-                else _k_compile_token(env, rh);
+                _k_compile_operator_prelude(env, lh, rh);
 
                 _k_assemble_swap_rax_rcx(env);
                 _k_assemble_division(env);
-                _k_assemble_store_rax(env);
-
-                if (i > 0)
-                    env->runtime->operations[i-1].rh = (_k_token_t *)0x0;
                 
-                if (i < env->runtime->operation_count - 1)
-                    env->runtime->operations[i+1].lh = (_k_token_t *)0x0;
+                _k_compile_operator_postlude(env, i);
                 break;
 
             case _K_OP_MOD:
-                if (lh == (_k_token_t *)0x0) {
-                    _k_assemble_load_rcx(env);
-                    _k_assemble_swap_rax_rcx(env);
-                }
-
-                else _k_compile_token(env, lh);
-
-                _k_assemble_mov_rcx_rax(env);
-
-                if (rh == (_k_token_t *)0x0) {
-                    _k_assemble_load_rcx(env);
-                    _k_assemble_swap_rax_rcx(env);
-                }
-
-                else _k_compile_token(env, rh);
+                _k_compile_operator_prelude(env, lh, rh);
                 
                 _k_assemble_swap_rax_rcx(env);
                 _k_assemble_division(env);
                 _k_assemble_mov_rdx_rax(env);
-                _k_assemble_store_rax(env);
-
-                if (i > 0)
-                    env->runtime->operations[i-1].rh = (_k_token_t *)0x0;
                 
-                if (i < env->runtime->operation_count - 1)
-                    env->runtime->operations[i+1].lh = (_k_token_t *)0x0;
+                _k_compile_operator_postlude(env, i);
                 break;
         }
     }
@@ -485,66 +486,21 @@ k_build_error_t _k_compile_operator(k_env_t *env) {
 
         switch (type) {
                 case _K_OP_ADD:
-                    /* 
-                    *    LH should be already in arithmetic register, 
-                    *    so we'll move into another register, and then 
-                    *    add to arithmetic register after compiling the next expression. 
-                    */
-                    if (lh == (_k_token_t *)0x0) {
-                        _k_assemble_load_rcx(env);
-                        _k_assemble_swap_rax_rcx(env);
-                    }
-
-                    else _k_compile_token(env, lh);
-
-                    _k_assemble_mov_rcx_rax(env);
-
-                    if (rh == (_k_token_t *)0x0) {
-                        _k_assemble_load_rcx(env);
-                        _k_assemble_swap_rax_rcx(env);
-                    }
-
-                    else _k_compile_token(env, rh);
+                    _k_compile_operator_prelude(env, lh, rh);
 
                     _k_assemble_addition(env);
 
-                    _k_assemble_store_rax(env);
-
-                    if (i > 0)
-                        env->runtime->operations[i-1].rh = (_k_token_t *)0x0;
-                
-                    if (i < env->runtime->operation_count - 1)
-                        env->runtime->operations[i+1].lh = (_k_token_t *)0x0;
+                    _k_compile_operator_postlude(env, i);
                     break;
                 
                 case _K_OP_SUB:
-                    if (lh == (_k_token_t *)0x0) {
-                        _k_assemble_load_rcx(env);
-                        _k_assemble_swap_rax_rcx(env);
-                    }
-
-                    else _k_compile_token(env, lh);
-
-                    _k_assemble_mov_rcx_rax(env);
-
-                    if (rh == (_k_token_t *)0x0) {
-                        _k_assemble_load_rcx(env);
-                        _k_assemble_swap_rax_rcx(env);
-                    }
-
-                    else _k_compile_token(env, rh);
+                    _k_compile_operator_prelude(env, lh, rh);
 
                     _k_assemble_swap_rax_rcx(env);
 
                     _k_assemble_subtraction(env);
 
-                    _k_assemble_store_rax(env);
-
-                    if (i > 0)
-                        env->runtime->operations[i-1].rh = (_k_token_t *)0x0;
-                
-                    if (i < env->runtime->operation_count - 1)
-                        env->runtime->operations[i+1].lh = (_k_token_t *)0x0;
+                    _k_compile_operator_postlude(env, i);
                     break;
         }
     }
@@ -613,19 +569,18 @@ k_build_error_t _k_compile_expression(k_env_t *env) {
 
         lh = env->cur_token;
 
-        /* Iterate through the grammar table and try to find a match.  */
-        for (unsigned long i = 0; i < ARRAY_SIZE(_expression_grammar); i++) {
-            if (*type == _expression_grammar[i].type) {
-                k_build_error_t ret = _expression_grammar[i].compile(env);
+        if (*type != _K_TOKEN_TYPE_OPERATOR) {
+            /* Iterate through the grammar table and try to find a match.  */
+            for (unsigned long i = 0; i < ARRAY_SIZE(_expression_grammar); i++) {
+                if (lh->tokenable->type == _expression_grammar[i].type) {
+                    k_build_error_t ret = _expression_grammar[i].compile(env);
 
-                if (ret != K_ERROR_NONE) return ret;
+                    if (ret != K_ERROR_NONE) return ret;
 
-                break;
+                    break;
+                }
             }
         }
-
-        if (*type != _K_TOKEN_TYPE_OPERATOR)
-            continue;
 
         for (unsigned long i = 0; i < ARRAY_SIZE(_operator_table); i++) {
             if (strcmp(env->cur_token->str, _operator_table[i].operator) == 0) {
@@ -823,6 +778,7 @@ _k_grammar_t _statement_grammar[] = {
     {_K_TOKEN_TYPE_KEYWORD, _k_compile_keyword},
     {_K_TOKEN_TYPE_IDENTIFIER, _k_compile_declaration},
     {_K_TOKEN_TYPE_ENDLINE, _k_compile_endline},
+    {_K_TOKEN_TYPE_NEWEXPRESSION, _k_compile_expression},
 };
 
 /*
