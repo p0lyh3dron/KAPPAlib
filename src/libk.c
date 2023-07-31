@@ -125,24 +125,51 @@ void k_call_function(k_env_t *env, const char *name, void **ret, unsigned long a
              *
              *    RDI = 1, RSI = 2, R8 = 3, R9 = 4
              */
+            _k_function_t *func = &env->runtime->function_table[i];
+
+            if (func->parameter_count != argc) {
+                env->log("k_call_function: argument count mismatch\n");
+                return;
+            }
+
             unsigned long j = 0;
             va_list args;
 
             va_start(args, arg);
 
             while (j < argc) {
-                switch (j++) {
+                switch (j) {
                     case 0:
-                        asm volatile("mov %0, %%rdi" : : "r" (arg));
+                        if (func->parameters[j++].flags & _K_VARIABLE_FLAG_FLOAT)
+                            asm volatile("movq %0, %%rax\n\t"
+                                         "movsd (%%rax), %%xmm7"
+                                         : : "r" (&arg));
+                        else
+                            asm volatile("mov %0, %%rdi" : : "r" (arg));
                         break;
                     case 1:
-                        asm volatile("mov %0, %%rsi" : : "r" (arg));
+                        if (func->parameters[j++].flags & _K_VARIABLE_FLAG_FLOAT)
+                            asm volatile("movq %0, %%rax\n\t"
+                                         "movsd (%%rax), %%xmm6"
+                                         : : "r" (&arg));
+                        else
+                            asm volatile("mov %0, %%rsi" : : "r" (arg));
                         break;
                     case 2:
-                        asm volatile("mov %0, %%r8" : : "r" (arg));
+                        if (func->parameters[j++].flags & _K_VARIABLE_FLAG_FLOAT)
+                            asm volatile("movq %0, %%rax\n\t"
+                                         "movsd (%%rax), %%xmm5"
+                                         : : "r" (&arg));
+                        else
+                            asm volatile("mov %0, %%r8" : : "r" (arg));
                         break;
                     case 3:
-                        asm volatile("mov %0, %%r9" : : "r" (arg));
+                        if (func->parameters[j++].flags & _K_VARIABLE_FLAG_FLOAT)
+                            asm volatile("movq %0, %%rax\n\t"
+                                         "movsd (%%rax), %%xmm4"
+                                         : : "r" (&arg));
+                        else
+                            asm volatile("mov %0, %%r9" : : "r" (arg));
                         break;
                 }
 
@@ -151,11 +178,20 @@ void k_call_function(k_env_t *env, const char *name, void **ret, unsigned long a
 
             va_end(args);
 
-            asm volatile("mov %0, %%rax" : : "r" (env->runtime->mem + (long)env->runtime->function_table[i].source));
+            asm volatile("mov %0, %%rax" : : "r" (env->runtime->mem + (long)func->source));
             asm volatile("call *%rax");
 
-            if (ret != (void*)0x0)
-                asm volatile("mov %%rax, %0" : "=r" (*ret));
+            /* Put return in an unlikely used register.  */
+            asm volatile("mov %rax, %r13");
+
+            if (ret != (void*)0x0) {
+                if (func->flags & _K_VARIABLE_FLAG_FLOAT)
+                    asm volatile("movq %0, %%rax\n\t"
+                                 "movsd %%xmm0, (%%rax)"
+                                 : : "r" (&arg));
+                else
+                    asm volatile("mov %%r13, %0" : "=r" (*ret));
+            }
 
             return;
         }

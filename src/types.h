@@ -63,21 +63,26 @@ typedef struct {
 
 typedef struct {
     char          *name;
-    char          *source;
-    unsigned long  size;
-} _k_function_t;
-
-#define _K_VARIABLE_FLAG_FUNC   (1 << 0)
-#define _K_VARIABLE_FLAG_GLOBAL (1 << 1)
-#define _K_VARIABLE_FLAG_FLOAT  (1 << 2)
-
-typedef struct {
-    char          *name;
     char          *type;
     unsigned long  offset;
     unsigned long  size;
     char           flags;
 } _k_variable_t;
+
+typedef struct {
+    char          *name;
+    char          *source;
+    unsigned long  size;
+
+    _k_variable_t  *parameters;
+    unsigned long   parameter_count;
+
+    char            flags;
+} _k_function_t;
+
+#define _K_VARIABLE_FLAG_FUNC   (1 << 0)
+#define _K_VARIABLE_FLAG_GLOBAL (1 << 1)
+#define _K_VARIABLE_FLAG_FLOAT  (1 << 2)
 
 typedef enum {
     _K_OP_NONE = 0,
@@ -123,8 +128,6 @@ typedef struct {
     _k_variable_t  *globals;
     unsigned long  global_count;
     unsigned long  global_offset;
-    _k_variable_t  *parameters;
-    unsigned long  parameter_count;
 } _k_runtime_t;
 
 typedef struct {

@@ -111,6 +111,19 @@ void _k_add_operation(k_env_t *env, _k_op_type_e type, _k_token_t *lh, _k_token_
 }
 
 /*
+ *    Adds a parameter to the function info.
+ *
+ *    @param k_env_t       *env       The environment to add the parameter to.
+ *    @param _k_variable_t *var       The parameter to add.
+ *    @param _k_function_t *function  The function to add the parameter to.
+ */
+void _k_add_parameter(k_env_t *env, _k_variable_t *var, _k_function_t *function) {
+    function->parameters = realloc(function->parameters, sizeof(_k_variable_t) * (function->parameter_count + 1));
+
+    memcpy(&function->parameters[function->parameter_count++], var, sizeof(_k_variable_t));
+}
+
+/*
  *    Gets a variable from the compiler environment.
  *
  *    @param k_env_t    *env     The environment to get the variable from.
@@ -839,6 +852,13 @@ k_build_error_t _k_prepare_function_compile(k_env_t *env, char *id) {
     env->cur_function->name   = id;
     env->cur_function->source = env->runtime->size;
     env->cur_function->size   = 0;
+
+    env->cur_function->parameters      = (_k_variable_t *)0x0;
+    env->cur_function->parameter_count = 0;
+
+    env->cur_function->flags = 0;
+
+    return K_ERROR_NONE;
 }
 
 /*
@@ -889,6 +909,7 @@ k_build_error_t _k_compile_function_declaration(k_env_t *env) {
         }
 
         _k_add_var(env, &var, 0);
+        _k_add_parameter(env, &var, env->cur_function);
     }
 
     _k_advance_token(env);
@@ -961,6 +982,8 @@ k_build_error_t _k_compile_global_declaration(k_env_t *env) {
         _k_add_var(env, &var, 1);
 
         _k_prepare_function_compile(env, var.name);
+
+        env->cur_function->flags = strcmp(type, "f64") == 0 || strcmp(type, "f32") == 0 ? _K_VARIABLE_FLAG_FLOAT : 0x0;
 
         return _k_compile_function_declaration(env);
     }
