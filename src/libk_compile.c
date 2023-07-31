@@ -914,6 +914,8 @@ k_build_error_t _k_compile_function_declaration(k_env_t *env) {
     env->runtime->locals      = (_k_function_t *)0x0;
     env->runtime->local_count = 0;
 
+    _local_offset = 0;
+
     return K_ERROR_NONE;
 }
 
