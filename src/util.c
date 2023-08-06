@@ -36,9 +36,35 @@ const char *_k_get_error(k_env_t *env, const char *msg, ...) {
     vsprintf(buffer, msg, args);
     va_end(args);
 
-    sprintf(error, "Error | %lu-%lu: %s", env->cur_token->line, env->cur_token->column, buffer);
+    sprintf(error, "\e[1;31mError\e[0m | %lu-%lu: %s", env->cur_token->line, env->cur_token->column, buffer);
 
     return error;
+}
+
+/*
+ *    Returns the current warning.
+ *
+ *    @param k_env_t *env       The environment to get the warning from.
+ *    @param const char *msg    The warning text.
+ *    @param ...                The arguments to the warning text.
+ * 
+ *    @return const char *   The current warning.
+ */
+const char *_k_get_warning(k_env_t *env, const char *msg, ...) {
+    static char warning[256];
+    static char buffer[256];
+
+    va_list args;
+
+    memset(warning, 0, 256);
+
+    va_start(args, msg);
+    vsprintf(buffer, msg, args);
+    va_end(args);
+
+    sprintf(warning, "\e[1;33mWarning\e[0m | %lu-%lu: %s", env->cur_token->line, env->cur_token->column, buffer);
+
+    return warning;
 }
 
 /*

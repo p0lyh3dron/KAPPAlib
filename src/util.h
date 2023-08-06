@@ -12,6 +12,8 @@
 #define _LIBK_UTIL_H
 
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof(x[0]))
+#define MAX(x, y)     ((x) > (y) ? (x) : (y))
+#define MIN(x, y)     ((x) < (y) ? (x) : (y))
 
 /*
  *    Returns the current error.
@@ -23,6 +25,17 @@
  *    @return const char *   The current error.
  */
 const char *_k_get_error(k_env_t *env, const char *msg, ...);
+
+/*
+ *    Returns the current warning.
+ *
+ *    @param k_env_t *env       The environment to get the warning from.
+ *    @param const char *msg    The warning text.
+ *    @param ...                The arguments to the warning text.
+ * 
+ *    @return const char *   The current warning.
+ */
+const char *_k_get_warning(k_env_t *env, const char *msg, ...);
 
 /*
  *    Returns the identifier string.

@@ -192,20 +192,21 @@ char *_k_get_function(k_env_t *env, const char *name) {
  *     Compiles a number.
  *
  *     @param k_env_t    *env       The environment to compile the number in.
+ *     @param _k_type_t  *type      The type of the number.
  * 
  *     @return k_build_error_t    The error code, if any.
  */
-k_build_error_t _k_compile_number(k_env_t *env) {
+k_build_error_t _k_compile_number(k_env_t *env, _k_type_t *type) {
     if (strchr(env->cur_token->str, '.') != (char *)0x0) {
-        env->runtime->cur_local.is_float = 1;
-        env->runtime->cur_local.size     = 8;
+        type->is_float = 1;
+        type->size     = 4;
 
         _k_assemble_mov_float(env, atof(env->cur_token->str));
     }
 
     else {
-        env->runtime->cur_local.is_float = 0;
-        env->runtime->cur_local.size     = 8;
+        type->is_float = 0;
+        type->size     = 8;
 
         _k_assemble_mov_integer(env, atoi(env->cur_token->str));
     }
@@ -237,10 +238,11 @@ k_build_error_t _k_compile_string(k_env_t *env) {
  *     Compiles an identifier.
  *
  *     @param k_env_t    *env       The environment to compile the identifier in.
+ *     @param _k_type_t  *type      The type of the identifier.
  *
  *     @return k_build_error_t    The error code, if any.
  */
-k_build_error_t _k_compile_identifier(k_env_t *env) {
+k_build_error_t _k_compile_identifier(k_env_t *env, _k_type_t *type) {
     _k_variable_t *var = _k_get_var(env, env->cur_token->str);
 
     if (var == (_k_variable_t *)0x0) {
@@ -286,6 +288,10 @@ k_build_error_t _k_compile_identifier(k_env_t *env) {
         else _k_assemble_move(env, var->offset, var->size, var->flags & _K_VARIABLE_FLAG_FLOAT);
     }
 
+    type->id       = var->type;
+    type->is_float = var->flags & _K_VARIABLE_FLAG_FLOAT;
+    type->size     = var->size;
+
     _k_advance_token(env);
 
     return K_ERROR_NONE;
@@ -321,10 +327,11 @@ k_build_error_t _k_compile_new_expression(k_env_t *env) {
  *
  *    @param k_env_t    *env       The environment to compile the token in.
  *    @param _k_token_t *token     The token to compile.
+ *    @param _k_type_t  *type      The type of the token.
  * 
  *    @return k_build_error_t    The error code, if any.
  */
-k_build_error_t _k_compile_token(k_env_t *env, _k_token_t *token) {
+k_build_error_t _k_compile_token(k_env_t *env, _k_token_t *token, _k_type_t *type) {
     _k_token_t *old = env->cur_token;
 
     env->cur_token = token;
@@ -334,7 +341,7 @@ k_build_error_t _k_compile_token(k_env_t *env, _k_token_t *token) {
 
     switch (token->tokenable->type) {
         case _K_TOKEN_TYPE_NUMBER:
-            ret = _k_compile_number(env);
+            ret = _k_compile_number(env, type);
             break;
 
         case _K_TOKEN_TYPE_STRING:
@@ -342,11 +349,13 @@ k_build_error_t _k_compile_token(k_env_t *env, _k_token_t *token) {
             break;
 
         case _K_TOKEN_TYPE_IDENTIFIER:
-            ret = _k_compile_identifier(env);
+            ret = _k_compile_identifier(env, type);
             break;
 
         case _K_TOKEN_TYPE_NEWEXPRESSION:
             _k_advance_token(env);
+
+            _k_operation_t *op = env->runtime->current_operation;
 
             ret = _k_compile_expression(env);
 
@@ -359,6 +368,12 @@ k_build_error_t _k_compile_token(k_env_t *env, _k_token_t *token) {
 
                 return K_ERROR_INVALID_ENDEXPRESSION;
             }
+
+            env->runtime->current_operation = op;
+
+            type->is_float = env->runtime->current_type.is_float;
+            type->size     = env->runtime->current_type.size;
+            
             break;
 
         default:
@@ -377,20 +392,22 @@ k_build_error_t _k_compile_token(k_env_t *env, _k_token_t *token) {
  *    Compiles the operator prelude.
  *
  *    @param k_env_t    *env       The environment to compile the operator prelude in.
- *    @param _k_token_t *lh        The left hand side of the operator.
- *    @param _k_token_t *rh        The right hand side of the operator.
  * 
  *    @return k_build_error_t    The error code, if any.
  */
-k_build_error_t _k_compile_operator_prelude(k_env_t *env, _k_token_t *lh, _k_token_t *rh) {
+k_build_error_t _k_compile_operator_prelude(k_env_t *env) {
+    _k_token_t *lh = env->runtime->current_operation->lh;
+    _k_token_t *rh = env->runtime->current_operation->rh;
+
+    _k_type_t *lh_type = &env->runtime->current_operation->lh_type;
+    _k_type_t *rh_type = &env->runtime->current_operation->rh_type;
+
     if (lh == (_k_token_t *)0x0) {
         _k_assemble_load_rcx(env);
         _k_assemble_swap_rax_rcx(env);
     }
 
-    else _k_compile_token(env, lh);
-
-    env->runtime->aux_local = env->runtime->cur_local;
+    else _k_compile_token(env, lh, lh_type);
 
     _k_assemble_mov_rcx_rax(env);
 
@@ -399,7 +416,7 @@ k_build_error_t _k_compile_operator_prelude(k_env_t *env, _k_token_t *lh, _k_tok
         _k_assemble_swap_rax_rcx(env);
     }
 
-    else _k_compile_token(env, rh);
+    else _k_compile_token(env, rh, rh_type);
 
     return K_ERROR_NONE;
 }
@@ -415,11 +432,20 @@ k_build_error_t _k_compile_operator_prelude(k_env_t *env, _k_token_t *lh, _k_tok
 k_build_error_t _k_compile_operator_postlude(k_env_t *env, unsigned long index) {
     _k_assemble_store_rax(env);
 
-    if (index > 0)
-        env->runtime->operations[index-1].rh = (_k_token_t *)0x0;
+    if (index > 0) {
+        env->runtime->operations[index-1].rh      = (_k_token_t *)0x0; 
+
+        env->runtime->operations[index-1].rh_type.is_float = env->runtime->operations[index-1].lh_type.is_float || env->runtime->operations[index-1].rh_type.is_float;
+        env->runtime->operations[index-1].rh_type.size     = MAX(env->runtime->operations[index-1].lh_type.size, env->runtime->operations[index-1].rh_type.size);
+    }
     
-    if (index < env->runtime->operation_count - 1)
-        env->runtime->operations[index+1].lh = (_k_token_t *)0x0;
+    if (index < env->runtime->operation_count - 1) {
+        env->runtime->operations[index+1].lh      = (_k_token_t *)0x0;
+
+        env->runtime->operations[index+1].lh_type.is_float = env->runtime->operations[index].lh_type.is_float || env->runtime->operations[index].rh_type.is_float;
+        env->runtime->operations[index+1].lh_type.size     = MAX(env->runtime->operations[index].lh_type.size, env->runtime->operations[index].rh_type.size);
+    }
+
 
     return K_ERROR_NONE;
 }
@@ -432,23 +458,24 @@ k_build_error_t _k_compile_operator_postlude(k_env_t *env, unsigned long index) 
  *    @return k_build_error_t    The error code, if any.
  */
 k_build_error_t _k_compile_operator(k_env_t *env) {
-    _k_op_type_e type = _K_TOKEN_TYPE_UNKNOWN;
-    _k_token_t  *lh   = (_k_token_t *)0x0;
-    _k_token_t  *rh   = (_k_token_t *)0x0;
+    _k_op_type_e type = _K_OP_NONE;
 
     for (unsigned long j = 0; j <= 3; ++j) {
         for (unsigned long i = 0; i < env->runtime->operation_count; ++i) {
-            type = env->runtime->operations[i].type;
-            lh   = env->runtime->operations[i].lh;
-            rh   = env->runtime->operations[i].rh;
+            type                            = env->runtime->operations[i].type;
+            env->runtime->current_operation = &env->runtime->operations[i];
+            _k_token_t *lh                  = env->runtime->current_operation->lh;
+            _k_token_t *rh                  = env->runtime->current_operation->rh;
+            _k_type_t  *lh_type             = &env->runtime->current_operation->lh_type;
+            _k_type_t  *rh_type             = &env->runtime->current_operation->rh_type;
 
             if (type == _K_OP_ASSIGN && j == 3) {
-                if (rh == (_k_token_t *)0x0) {
+                if (env->runtime->current_operation->rh == (_k_token_t *)0x0) {
                     _k_assemble_load_rcx(env);
                     _k_assemble_swap_rax_rcx(env);
                 }
 
-                else _k_compile_token(env, rh);
+                else _k_compile_token(env, rh, rh_type);
 
                 _k_variable_t *var = _k_get_var(env, lh->str);
 
@@ -464,7 +491,7 @@ k_build_error_t _k_compile_operator(k_env_t *env) {
             else {
                 for (unsigned long k = 0; k < _op_list_size; ++k) {
                     if (_op_list[k] == type && _op_hierarchy_list[k] == j) {
-                        _k_compile_operator_prelude(env, lh, rh);
+                        _k_compile_operator_prelude(env);
 
                         k_build_error_t ret = _op_compile_list[k](env, type);
 
@@ -482,12 +509,28 @@ k_build_error_t _k_compile_operator(k_env_t *env) {
     return K_ERROR_NONE;
 }
 
-_k_grammar_t _expression_grammar[] = {
-    {_K_TOKEN_TYPE_NUMBER, _k_compile_number},
-    {_K_TOKEN_TYPE_STRING, _k_compile_string},
-    {_K_TOKEN_TYPE_IDENTIFIER, _k_compile_identifier},
-    {_K_TOKEN_TYPE_NEWEXPRESSION, _k_compile_new_expression},
-};
+/*
+ *    Skips to an operator.
+ *
+ *    @param k_env_t    *env       The environment to skip to the operator in.
+ * 
+ *    @return k_build_error_t    The error code, if any.
+ */
+k_build_error_t _k_skip_to_operator(k_env_t *env) {
+    if (env->cur_type == _K_TOKEN_TYPE_NUMBER ||
+        env->cur_type == _K_TOKEN_TYPE_STRING ||
+        env->cur_type == _K_TOKEN_TYPE_IDENTIFIER) {
+        _k_advance_token(env);
+    }
+
+    else if (env->cur_type == _K_TOKEN_TYPE_NEWEXPRESSION) {
+        while (env->cur_type != _K_TOKEN_TYPE_ENDEXPRESSION) {
+            _k_advance_token(env);
+        }
+
+        _k_advance_token(env);
+    }
+}
 
 /*
  *    Compiles an expression.
@@ -504,6 +547,7 @@ k_build_error_t _k_compile_expression(k_env_t *env) {
 
     _k_operation_t *old       = env->runtime->operations;
     unsigned long   old_count = env->runtime->operation_count;
+    char            parsed    = 0;
 
     env->runtime->operations      = (_k_operation_t *)0x0;
     env->runtime->operation_count = 0;
@@ -519,20 +563,13 @@ k_build_error_t _k_compile_expression(k_env_t *env) {
         lh = env->cur_token;
 
         if (*type != _K_TOKEN_TYPE_OPERATOR) {
-            /* Iterate through the grammar table and try to find a match.  */
-            for (unsigned long i = 0; i < ARRAY_SIZE(_expression_grammar); i++) {
-                if (lh->tokenable->type == _expression_grammar[i].type) {
-                    k_build_error_t ret = _expression_grammar[i].compile(env);
-
-                    if (ret != K_ERROR_NONE) return ret;
-
-                    break;
-                }
-            }
+            _k_skip_to_operator(env);
         }
 
         for (unsigned long i = 0; i < ARRAY_SIZE(_operator_table); i++) {
             if (strcmp(env->cur_token->str, _operator_table[i].operator) == 0) {
+                parsed = 1;
+
                 _k_advance_token(env);
 
                 rh = env->cur_token;
@@ -542,10 +579,22 @@ k_build_error_t _k_compile_expression(k_env_t *env) {
                 break;
             }
         }
+
+        if (parsed == 0) {
+            parsed = 1;
+
+            _k_add_operation(env, _K_OP_NONE, lh, (_k_token_t *)0x0);
+            env->runtime->current_operation = &env->runtime->operations[env->runtime->operation_count - 1];
+
+            _k_compile_token(env, lh, &env->runtime->current_operation->lh_type);
+        }
     /* If it can't find anything to parse, we're probably no longer in expression land.  */
     } while (prev != env->cur_token);
 
     _k_compile_operator(env);
+
+    env->runtime->current_type.is_float = env->runtime->current_operation->lh_type.is_float || env->runtime->current_operation->rh_type.is_float;
+    env->runtime->current_type.size     = MAX(env->runtime->current_operation->lh_type.size, env->runtime->current_operation->rh_type.size);
 
     free(env->runtime->operations);
 
@@ -913,7 +962,6 @@ k_build_error_t _k_compile_global_declaration(k_env_t *env) {
 
     if (env->cur_type == _K_TOKEN_TYPE_NEWEXPRESSION) {
         var.flags |= _K_VARIABLE_FLAG_FUNC;
-        var.size   = 0;
 
         _k_add_var(env, &var, 1);
 

@@ -51,6 +51,36 @@ void _k_insert_bytecode(k_env_t *env, char *bytecode, unsigned long length, unsi
 }
 
 /*
+ *    Converts low-level types for an operation.
+ *
+ *    @param k_env_t *env    The environment to convert the types for.
+ */
+void _k_convert_types(k_env_t *env) {
+    const char *convert = (const char*)0x0;
+
+    _k_type_t lh_type = env->runtime->current_operation->lh_type;
+    _k_type_t rh_type = env->runtime->current_operation->rh_type;
+
+    unsigned long size = MAX(lh_type.size, rh_type.size);
+    unsigned long flt  = lh_type.is_float || rh_type.is_float;
+
+    if (!lh_type.is_float != !rh_type.is_float) {
+        env->log(_k_get_warning(env, "Operand type mismatch: %s and %s\n", lh_type.is_float ? "float" : "int", rh_type.is_float ? "float" : "int"));
+
+        if (!lh_type.is_float) {
+            convert = "\xF3\x48\x0F\x2A\xC1";   /* cvtsi2ss xmm0, rax  */
+        }
+
+        else {
+            convert = "\xF3\x48\x0F\x2A\xC8";   /* cvtsi2ss xmm1, rcx  */
+        }
+    }
+
+    if (convert != (const char*)0x0)
+        _k_append_bytecode(env, (char *)convert, 5);
+}
+
+/*
  *    Generates the assembly for the prelude.
  *
  *    @param k_env_t *env    The environment to generate the prelude for.
@@ -207,23 +237,23 @@ void _k_assemble_parameter_load(k_env_t *env, unsigned long index, unsigned long
 
     else {
         if (index == 0) {
-            if (size == 8) load = "\xF2\x0F\x10\xC7";
-            else           load = "\xF3\x0F\x10\xC7";
+            if (size == 8) load = "\xF2\x0F\x10\xF8";
+            else           load = "\xF3\x0F\x10\xF8";
         }
 
         else if (index == 1) {
-            if (size == 8) load = "\xF2\x0F\x10\xD7";
-            else           load = "\xF3\x0F\x10\xD7";
+            if (size == 8) load = "\xF2\x0F\x10\xF0";
+            else           load = "\xF3\x0F\x10\xF0";
         }
 
         else if (index == 2) {
-            if (size == 8) load = "\xF2\x0F\x10\xCF";
-            else           load = "\xF3\x0F\x10\xCF";
+            if (size == 8) load = "\xF2\x0F\x10\xE8";
+            else           load = "\xF3\x0F\x10\xE8";
         }
 
         else if (index == 3) {
-            if (size == 8) load = "\xF2\x0F\x10\xDF";
-            else           load = "\xF3\x0F\x10\xDF";
+            if (size == 8) load = "\xF2\x0F\x10\xE0";
+            else           load = "\xF3\x0F\x10\xE0";
         }
     }
 
@@ -399,9 +429,28 @@ void _k_assemble_store_rcx(k_env_t *env) {
     /*
      *    51          push rcx
      */
-    const char *store = "\x51";
+    const char   *store = (const char*)0x0;
+    unsigned long size;
 
-    _k_append_bytecode(env, (char *)store, 1);
+    _k_type_t *type = &env->runtime->current_operation->lh_type;
+
+    if (type->is_float >= 1) {
+        size = 13;
+
+        if (type->size == 8) store = "\x48\x83\xEC\x10\xF3\x0F\x7F\x8C\x24\x00\x00\x00\x00";
+        else                 store = "\x48\x83\xEC\x10\xF3\x0F\x7F\x84\x24\x00\x00\x00\x00";
+    }
+
+    else {
+        size = 1;
+
+        if (type->size == 8)      store = "\x51";      /* push rcx         */
+        else if (type->size == 4) store = "\x51";      /* push ecx         */
+        else if (type->size == 2) store = "\x51";      /* push cx          */
+        else                      store = "\x51";      /* push cl          */
+    }
+
+    _k_append_bytecode(env, (char *)store, size);
 }
 
 /*
@@ -413,9 +462,28 @@ void _k_assemble_store_rax(k_env_t *env) {
     /*
      *    50          push rax
      */
-    const char *store = "\x50";
+    const char   *store = (const char*)0x0;
+    unsigned long size;
 
-    _k_append_bytecode(env, (char *)store, 1);
+    _k_type_t *type = &env->runtime->current_operation->lh_type;
+
+    if (type->is_float >= 1) {
+        size = 13;
+
+        if (type->size == 8) store = "\x48\x83\xEC\x10\xF3\x0F\x7F\x84\x24\x00\x00\x00\x00";
+        else                 store = "\x48\x83\xEC\x10\xF3\x0F\x7F\x84\x24\x00\x00\x00\x00";
+    }
+
+    else {
+        size = 1;
+
+        if (type->size == 8)      store = "\x50";      /* push rax         */
+        else if (type->size == 4) store = "\x50";      /* push eax         */
+        else if (type->size == 2) store = "\x50";      /* push ax          */
+        else                      store = "\x50";      /* push al          */
+    }
+
+    _k_append_bytecode(env, (char *)store, size);
 }
 
 /*
@@ -427,9 +495,29 @@ void _k_assemble_load_rcx(k_env_t *env) {
     /*
      *    59          pop rcx
      */
-    const char *load = "\x59";
+    const char   *load = (const char*)0x0;
+    unsigned long size;
 
-    _k_append_bytecode(env, (char *)load, 1);
+    _k_type_t *type = &env->runtime->current_operation->lh_type;
+
+
+    if (type->is_float >= 1) {
+        size = 13;
+        
+        if (type->size == 8) load = "\xF3\x0F\x6F\x8C\x24\x00\x00\x00\x00\x48\x83\xC4\x10";
+        else                 load = "\xF3\x0F\x6F\x8C\x24\x00\x00\x00\x00\x48\x83\xC4\x10";
+    }
+
+    else {
+        size = 1;
+
+        if (type->size == 8)      load = "\x59";      /* pop rcx         */
+        else if (type->size == 4) load = "\x59";      /* pop ecx         */
+        else if (type->size == 2) load = "\x59";      /* pop cx          */
+        else                      load = "\x59";      /* pop cl          */
+    }
+
+    _k_append_bytecode(env, (char *)load, size);
 }
 
 /*
@@ -438,12 +526,23 @@ void _k_assemble_load_rcx(k_env_t *env) {
  *    @param k_env_t *env    The environment to generate assembly for.
  */
 void _k_assemble_mov_rcx_rax(k_env_t *env) {
-    /*
-     *    48 89 C1    mov rcx, rax
-     */
-    const char *put = "\x48\x89\xC1";
+    const char *put = (const char*)0x0;
 
-    _k_append_bytecode(env, (char *)put, 3);
+    _k_type_t *type = &env->runtime->current_operation->lh_type;
+
+    if (type->is_float >= 1) {
+        if (type->size == 8) put = "\xF2\x0F\x10\xC8";   /* movsd xmm1, xmm0   */
+        else                 put = "\xF3\x0F\x10\xC8";   /* movss xmm1, xmm0   */
+    }
+
+    else {
+        if (type->size == 8)      put = "\x48\x89\xC1";      /* mov rcx, rax        */
+        else if (type->size == 4) put = "\x89\xC1";          /* mov ecx, eax        */
+        else if (type->size == 2) put = "\x66\x89\xC1";      /* mov cx, ax          */
+        else                      put = "\x88\xC8";          /* mov cl, al          */
+    }
+
+    _k_append_bytecode(env, (char *)put, strlen(put));
 }
 
 /*
@@ -455,9 +554,23 @@ void _k_assemble_swap_rax_rcx(k_env_t *env) {
     /*
      *    48 91   xchg rax, rcx
      */
-    const char *swap = "\x48\x91";
+    const char *swap = (const char*)0x0;
 
-    _k_append_bytecode(env, (char *)swap, 2);
+    _k_type_t *type = &env->runtime->current_operation->lh_type;
+
+    if (type->is_float >= 1) {
+        if (type->size == 8) swap = "\xF2\x0F\x10\xD0\xF2\x0F\x10\xC1\xF2\x0F\x10\xCA";
+        else                 swap = "\xF3\x0F\x10\xD0\xF3\x0F\x10\xC1\xF3\x0F\x10\xCA";
+    }
+
+    else {
+        if (type->size == 8)      swap = "\x48\x91";      /* xchg rax, rcx      */
+        else if (type->size == 4) swap = "\x91";          /* xchg eax, ecx      */
+        else if (type->size == 2) swap = "\x66\x91";      /* xchg ax, cx        */
+        else                      swap = "\x86\x91";      /* xchg al, cl        */
+    }
+
+    _k_append_bytecode(env, (char *)swap, strlen(swap));
 }
 
 /*
@@ -483,9 +596,56 @@ void _k_assemble_addition(k_env_t *env) {
     /*
      *     48 01 C0   add  rax, rcx
      */
-    const char *addition = "\x48\x01\xC8";
+    const char *addition = (const char *)0x0;
 
-    _k_append_bytecode(env, (char *)addition, 3);
+    unsigned long size = MAX(env->runtime->current_operation->lh_type.size, env->runtime->current_operation->rh_type.size);
+    unsigned long flt  = env->runtime->current_operation->lh_type.is_float || env->runtime->current_operation->rh_type.is_float;
+
+    _k_convert_types(env);
+
+    if (flt == 1) {
+        if (size == 8) {
+            /*
+             *     F2 0F 58 C1   addsd xmm0, xmm1
+             */
+            addition = "\xF2\x0F\x58\xC1";
+        }
+        else {
+            /*
+             *     F3 0F 58 C1   addss xmm0, xmm1
+             */
+            addition = "\xF3\x0F\x58\xC1";
+        }
+    }
+
+    else {
+        if (size == 8) {
+            /*
+             *     48 01 C0   add  rax, rcx
+             */
+            addition = "\x48\x01\xC8";
+        }
+        else if (size == 4) {
+            /*
+             *     01 C8   add  eax, ecx
+             */
+            addition = "\x01\xC8";
+        }
+        else if (size == 2) {
+            /*
+             *     66 01 C8   add  ax, cx
+             */
+            addition = "\x66\x01\xC8";
+        }
+        else {
+            /*
+             *     00 C8   add  al, cl
+             */
+            addition = "\x00\xC8";
+        }
+    }
+
+    _k_append_bytecode(env, (char *)addition, strlen(addition));
 }
 
 /*
@@ -497,9 +657,56 @@ void _k_assemble_subtraction(k_env_t *env) {
     /*
      *     48 29 C8   sub  rax, rcx
      */
-    const char *subtraction = "\x48\x29\xC8";
+    const char *subtraction = (const char*)0x0;
 
-    _k_append_bytecode(env, (char *)subtraction, 3);
+    unsigned long size = MAX(env->runtime->current_operation->lh_type.size, env->runtime->current_operation->rh_type.size);
+    unsigned long flt  = env->runtime->current_operation->lh_type.is_float || env->runtime->current_operation->rh_type.is_float;
+
+    _k_convert_types(env);
+
+    if (flt == 1) {
+        if (size == 8) {
+            /*
+             *     F2 0F 5C C1   subsd xmm0, xmm1
+             */
+            subtraction = "\xF2\x0F\x5C\xC1";
+        }
+        else {
+            /*
+             *     F3 0F 5C C1   subss xmm0, xmm1
+             */
+            subtraction = "\xF3\x0F\x5C\xC1";
+        }
+    }
+
+    else {
+        if (size == 8) {
+            /*
+             *     48 29 C8   sub  rax, rcx
+             */
+            subtraction = "\x48\x29\xC8";
+        }
+        else if (size == 4) {
+            /*
+             *     29 C8   sub  eax, ecx
+             */
+            subtraction = "\x29\xC8";
+        }
+        else if (size == 2) {
+            /*
+             *     66 29 C8   sub  ax, cx
+             */
+            subtraction = "\x66\x29\xC8";
+        }
+        else {
+            /*
+             *     28 C8   sub  al, cl
+             */
+            subtraction = "\x28\xC8";
+        }
+    }
+
+    _k_append_bytecode(env, (char *)subtraction, strlen(subtraction));
 }
 
 /*
@@ -511,9 +718,56 @@ void _k_assemble_multiplication(k_env_t *env) {
     /*
      *     48 0F AF C1   imul rax, rcx
      */
-    const char *multiplication = "\x48\x0F\xAF\xC1";
+    const char *multiplication = (const char *)0x0;
+    
+    unsigned long size = MAX(env->runtime->current_operation->lh_type.size, env->runtime->current_operation->rh_type.size);
+    unsigned long flt  = env->runtime->current_operation->lh_type.is_float || env->runtime->current_operation->rh_type.is_float;
 
-    _k_append_bytecode(env, (char *)multiplication, 4);
+    _k_convert_types(env);
+
+    if (flt == 1) {
+        if (size == 8) {
+            /*
+             *     F2 0F 59 C1   mulsd xmm0, xmm1
+             */
+            multiplication = "\xF2\x0F\x59\xC1";
+        }
+        else {
+            /*
+            *     F3 0F 59 C1   mulss xmm0, xmm1
+            */
+            multiplication = "\xF3\x0F\x59\xC1";
+        }
+    }
+
+    else {
+        if (size == 8) {
+            /*
+            *     48 0F AF C1   imul rax, rcx
+            */
+            multiplication = "\x48\x0F\xAF\xC1";
+        }
+        else if (size == 4) {
+            /*
+            *     0F AF C1   imul eax, ecx
+            */
+            multiplication = "\x0F\xAF\xC1";
+        }
+        else if (size == 2) {
+            /*
+            *     66 0F AF C1   imul ax, cx
+            */
+            multiplication = "\x66\x0F\xAF\xC1";
+        }
+        else {
+            /*
+            *     0F AF C1   imul al, cl
+            */
+            multiplication = "\x0F\xAF\xC1";
+        }
+    }
+
+    _k_append_bytecode(env, (char *)multiplication, strlen(multiplication));
 }
 
 /*
@@ -526,9 +780,60 @@ void _k_assemble_division(k_env_t *env) {
      *     48 99      cqo
      *     48 F7 F9   idiv rcx
      */
-    const char *division = "\x48\x99\x48\xF7\xF9";
+    const char *division = (const char *)0x0;
 
-    _k_append_bytecode(env, (char *)division, 5);
+    unsigned long size = MAX(env->runtime->current_operation->lh_type.size, env->runtime->current_operation->rh_type.size);
+    unsigned long flt  = env->runtime->current_operation->lh_type.is_float || env->runtime->current_operation->rh_type.is_float;
+
+    _k_convert_types(env);
+
+    if (flt == 1) {
+        if (size == 8) {
+            /*
+             *     F2 0F 5E C1   divsd xmm0, xmm1
+             */
+            division = "\xF2\x0F\x5E\xC1";
+        }
+        else {
+            /*
+             *     F3 0F 5E C1   divss xmm0, xmm1
+             */
+            division = "\xF3\x0F\x5E\xC1";
+        }
+    }
+
+    else {
+        if (size == 8) {
+            /*
+             *     48 99      cqo
+             *     48 F7 F9   idiv rcx
+             */
+            division = "\x48\x99\x48\xF7\xF9";
+        }
+        else if (size == 4) {
+            /*
+             *     99      cdq
+             *     F7 F9   idiv ecx
+             */
+            division = "\x99\xF7\xF9";
+        }
+        else if (size == 2) {
+            /*
+             *     66 99      cwd
+             *     66 F7 F9   idiv cx
+             */
+            division = "\x66\x99\x66\xF7\xF9";
+        }
+        else {
+            /*
+             *     99      cwd
+             *     F7 F9   idiv cl
+             */
+            division = "\x99\xF7\xF9";
+        }
+    }
+
+    _k_append_bytecode(env, (char *)division, strlen(division));
 }
 
 /*
@@ -541,9 +846,56 @@ void _k_assemble_comparison(k_env_t *env, _k_op_type_e cmp) {
     /*
      *     48 39 C1   cmp  rcx, rasx
      */
-    const char *comparison = "\x48\x39\xC1";
+    const char *comparison = (const char *)0x0;
 
-    _k_append_bytecode(env, (char *)comparison, 3);
+    unsigned long size = MAX(env->runtime->current_operation->lh_type.size, env->runtime->current_operation->rh_type.size);
+    unsigned long flt  = env->runtime->current_operation->lh_type.is_float || env->runtime->current_operation->rh_type.is_float;
+
+    _k_convert_types(env);
+
+    if (flt == 1) {
+        if (size == 8) {
+            /*
+             *     F2 0F 2E C1   ucomisd xmm0, xmm1
+             */
+            comparison = "\x66\x0F\x2E\xC1";
+        }
+        else {
+            /*
+             *     F3 0F 2E C1   ucomiss xmm0, xmm1
+             */
+            comparison = "\x0F\x2E\xC1";
+        }
+    }
+
+    else {
+        if (size == 8) {
+            /*
+             *     48 39 C1   cmp  rcx, rax
+             */
+            comparison = "\x48\x39\xC1";
+        }
+        else if (size == 4) {
+            /*
+             *     39 C1   cmp  ecx, eax
+             */
+            comparison = "\x39\xC1";
+        }
+        else if (size == 2) {
+            /*
+             *     66 39 C1   cmp  cx, ax
+             */
+            comparison = "\x66\x39\xC1";
+        }
+        else {
+            /*
+             *     38 C1   cmp  cl, al
+             */
+            comparison = "\x38\xC1";
+        }
+    }
+
+    _k_append_bytecode(env, (char *)comparison, strlen(comparison));
 
     const char *set = (const char*)0x0;
 
@@ -552,37 +904,43 @@ void _k_assemble_comparison(k_env_t *env, _k_op_type_e cmp) {
             /*
              *     0F 94 C0   sete al
              */
-            set = "\x0F\x94\xC0";
+            if (flt == 1) set = "\x0F\x94\xC0";
+            else          set = "\x0F\x94\xC0";
             break;
         case _K_OP_NE:
             /*
              *     0F 95 C0   setne al
              */
-            set = "\x0F\x95\xC0";
+            if (flt == 1) set = "\x0F\x95\xC0";
+            else          set = "\x0F\x95\xC0";
             break;
         case _K_OP_L:
             /*
              *     0F 9C C0   setl al
              */
-            set = "\x0F\x9C\xC0";
+            if (flt == 1) set = "\x0F\x97\xC0";
+            else          set = "\x0F\x9C\xC0";
             break;
         case _K_OP_LE:
             /*
              *     0F 9E C0   setle al
              */
-            set = "\x0F\x9E\xC0";
+            if (flt == 1) set = "\x0F\x96\xC0";
+            else          set = "\x0F\x9E\xC0";
             break;
-        case _K_CMP_G:
+        case _K_OP_G:
             /*
              *     0F 9F C0   setg al
              */
-            set = "\x0F\x9F\xC0";
+            if (flt == 1) set = "\x0F\x92\xC0";
+            else          set = "\x0F\x9F\xC0";
             break;
-        case _K_CMP_GE:
+        case _K_OP_GE:
             /*
              *     0F 9D C0   setge al
              */
-            set = "\x0F\x9D\xC0";
+            if (flt == 1) set = "\x0F\x93\xC0";
+            else          set = "\x0F\x9D\xC0";
             break;
     }
 

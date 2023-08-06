@@ -110,9 +110,17 @@ typedef struct {
 } _k_operator_t;
 
 typedef struct {
+    char         *id;
+    unsigned long size;
+    char          is_float;
+} _k_type_t;
+
+typedef struct {
     _k_op_type_e               type;
     _k_token_t                *lh;
+    _k_type_t                  lh_type;
     _k_token_t                *rh;
+    _k_type_t                  rh_type;
 } _k_operation_t;
 
 typedef union {
@@ -120,12 +128,6 @@ typedef union {
     long           s;
     double         f;
 } _k_arithmetic_u;
-
-typedef struct {
-    char         *id;
-    unsigned long size;
-    char          is_float;
-} _k_type_t;
 
 typedef struct {
     char          *type;
@@ -146,9 +148,8 @@ typedef struct {
     _k_variable_t  *globals;
     unsigned long  global_count;
     unsigned long  global_offset;
-    _k_type_t      cur_local;
-    _k_type_t      aux_local;
-    _k_type_t     *modify;
+    _k_operation_t *current_operation;
+    _k_type_t       current_type;
 } _k_runtime_t;
 
 typedef struct {

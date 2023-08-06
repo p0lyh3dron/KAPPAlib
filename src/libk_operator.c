@@ -49,7 +49,10 @@ k_build_error_t k_compile_div(k_env_t* env, _k_op_type_e type) {
  *    @return k_build_error_t    The error code.
  */
 k_build_error_t k_compile_mod(k_env_t* env, _k_op_type_e type) {
-    if (env->runtime->cur_local.is_float == 1 || env->runtime->aux_local.is_float == 1)
+    _k_type_t lh_type = env->runtime->current_operation->lh_type;
+    _k_type_t rh_type = env->runtime->current_operation->rh_type;
+
+    if (lh_type.is_float == 1 || rh_type.is_float == 1)
         return K_ERROR_UNALLOWED_FLOAT;
 
     _k_assemble_swap_rax_rcx(env);
