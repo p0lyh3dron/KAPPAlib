@@ -185,10 +185,10 @@ void k_call_function(k_env_t *env, const char *name, void **ret, unsigned long a
             asm volatile("mov %rax, %r13");
 
             if (ret != (void*)0x0) {
-                if (func->flags & _K_VARIABLE_FLAG_FLOAT)
-                    asm volatile("movq %0, %%rax\n\t"
-                                 "movsd %%xmm0, (%%rax)"
-                                 : : "r" (&arg));
+                if (func->flags & _K_VARIABLE_FLAG_FLOAT) {
+                    asm volatile("movq %%xmm0, %0" : "=r" (*ret));
+                }
+
                 else
                     asm volatile("mov %%r13, %0" : "=r" (*ret));
             }

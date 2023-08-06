@@ -372,6 +372,25 @@ void _k_assemble_mov_integer(k_env_t *env, long integer) {
 }
 
 /*
+ *    Generates assembly to put float into rax.
+ *
+ *    @param k_env_t *env    The environment to generate assembly for.
+ *    @param float    flt    The float to put into rax.
+ */
+void _k_assemble_mov_float(k_env_t *env, float flt) {
+    /*
+     *    48 C7 C0 00 00 00 00    mov  rax, flt
+     *    66 0F 6E C0             movq xmm0, rax
+     */
+    const char *put = "\x48\xC7\xC0";
+    const char *move = "\x66\x0F\x6E\xC0";
+
+    _k_append_bytecode(env, (char *)put, 3);
+    _k_append_bytecode(env, (char *)&flt, 4);
+    _k_append_bytecode(env, (char *)move, 4);
+}
+
+/*
  *    Generates assembly to store rcx.
  *
  *    @param k_env_t *env    The environment to generate assembly for.

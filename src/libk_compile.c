@@ -28,6 +28,7 @@ k_build_error_t _k_compile_statement(k_env_t*);
 #include "util.h"
 
 #include "libk_assemble.h"
+#include "libk_operator.h"
 #include "libk_parse.h"
 
 unsigned long   _var_size       = 0;
@@ -61,8 +62,8 @@ _k_operator_t _operator_table[] = {
  */
 unsigned long _k_deduce_size(const char *type) {
     for (unsigned long i = 0; i < _types_length; i++) {
-        if (strcmp(type, _types[i]) == 0) {
-            return _type_lengths[i];
+        if (strcmp(type, _types[i].id) == 0) {
+            return _types[i].size;
         }
     }
 
@@ -195,7 +196,19 @@ char *_k_get_function(k_env_t *env, const char *name) {
  *     @return k_build_error_t    The error code, if any.
  */
 k_build_error_t _k_compile_number(k_env_t *env) {
-    _k_assemble_mov_integer(env, atoi(env->cur_token->str));
+    if (strchr(env->cur_token->str, '.') != (char *)0x0) {
+        env->runtime->cur_local.is_float = 1;
+        env->runtime->cur_local.size     = 8;
+
+        _k_assemble_mov_float(env, atof(env->cur_token->str));
+    }
+
+    else {
+        env->runtime->cur_local.is_float = 0;
+        env->runtime->cur_local.size     = 8;
+
+        _k_assemble_mov_integer(env, atoi(env->cur_token->str));
+    }
 
     _k_advance_token(env);
 
@@ -377,6 +390,8 @@ k_build_error_t _k_compile_operator_prelude(k_env_t *env, _k_token_t *lh, _k_tok
 
     else _k_compile_token(env, lh);
 
+    env->runtime->aux_local = env->runtime->cur_local;
+
     _k_assemble_mov_rcx_rax(env);
 
     if (rh == (_k_token_t *)0x0) {
@@ -421,125 +436,46 @@ k_build_error_t _k_compile_operator(k_env_t *env) {
     _k_token_t  *lh   = (_k_token_t *)0x0;
     _k_token_t  *rh   = (_k_token_t *)0x0;
 
-    /* Logicals first.  */
-    for (unsigned long i = 0; i < env->runtime->operation_count; ++i) {        
-        type = env->runtime->operations[i].type;
-        lh   = env->runtime->operations[i].lh;
-        rh   = env->runtime->operations[i].rh;
+    for (unsigned long j = 0; j <= 3; ++j) {
+        for (unsigned long i = 0; i < env->runtime->operation_count; ++i) {
+            type = env->runtime->operations[i].type;
+            lh   = env->runtime->operations[i].lh;
+            rh   = env->runtime->operations[i].rh;
 
-        switch (type) {
-            case _K_OP_L:
-            case _K_OP_LE:
-            case _K_OP_G:
-            case _K_OP_GE:
-            case _K_OP_E:
-            case _K_OP_NE:
-                _k_compile_operator_prelude(env, lh, rh);
-
-                _k_assemble_comparison(env, type);
-
-                _k_compile_operator_postlude(env, i);
-                break;
-
-            case _K_OP_AND:
-                break;
-
-            case _K_OP_OR:
-                break;
-
-            case _K_OP_NOT:
-                break;
-
-            case _K_OP_NEG:
-                break;
-        }
-    }
-
-    /* Multiplications second.  */
-    for (unsigned long i = 0; i < env->runtime->operation_count; ++i) {
-        type = env->runtime->operations[i].type;
-        lh   = env->runtime->operations[i].lh;
-        rh   = env->runtime->operations[i].rh;
-
-        switch (type) {
-            case _K_OP_MUL:
-                _k_compile_operator_prelude(env, lh, rh);
-
-                _k_assemble_multiplication(env);
-                
-                _k_compile_operator_postlude(env, i);
-                break;
-
-            case _K_OP_DIV:
-                _k_compile_operator_prelude(env, lh, rh);
-
-                _k_assemble_swap_rax_rcx(env);
-                _k_assemble_division(env);
-                
-                _k_compile_operator_postlude(env, i);
-                break;
-
-            case _K_OP_MOD:
-                _k_compile_operator_prelude(env, lh, rh);
-                
-                _k_assemble_swap_rax_rcx(env);
-                _k_assemble_division(env);
-                _k_assemble_mov_rdx_rax(env);
-                
-                _k_compile_operator_postlude(env, i);
-                break;
-        }
-    }
-
-    /* Addition last. */
-    for (long i = env->runtime->operation_count - 1; i >= 0; --i) {
-        type = env->runtime->operations[i].type;
-        lh   = env->runtime->operations[i].lh;
-        rh   = env->runtime->operations[i].rh;
-
-        switch (type) {
-                case _K_OP_ADD:
-                    _k_compile_operator_prelude(env, lh, rh);
-
-                    _k_assemble_addition(env);
-
-                    _k_compile_operator_postlude(env, i);
-                    break;
-                
-                case _K_OP_SUB:
-                    _k_compile_operator_prelude(env, lh, rh);
-
+            if (type == _K_OP_ASSIGN && j == 3) {
+                if (rh == (_k_token_t *)0x0) {
+                    _k_assemble_load_rcx(env);
                     _k_assemble_swap_rax_rcx(env);
+                }
 
-                    _k_assemble_subtraction(env);
+                else _k_compile_token(env, rh);
 
-                    _k_compile_operator_postlude(env, i);
-                    break;
-        }
-    }
+                _k_variable_t *var = _k_get_var(env, lh->str);
 
-    for (unsigned long i = 0; i < env->runtime->operation_count; ++i) {
-        type = env->runtime->operations[i].type;
-        lh   = env->runtime->operations[i].lh;
-        rh   = env->runtime->operations[i].rh;
+                /* Assembly generated should put arithmetic register into local address. */
+                if (var->flags & _K_VARIABLE_FLAG_GLOBAL)
+                    _k_assemble_assignment_global(env, env->runtime->size - var->offset);
 
-        if (type == _K_OP_ASSIGN) {
-            if (rh == (_k_token_t *)0x0) {
-                _k_assemble_load_rcx(env);
-                _k_assemble_swap_rax_rcx(env);
+                else _k_assemble_assignment(env, var->offset, var->size, var->flags & _K_VARIABLE_FLAG_FLOAT);
+
+                break;
             }
 
-            else _k_compile_token(env, rh);
+            else {
+                for (unsigned long k = 0; k < _op_list_size; ++k) {
+                    if (_op_list[k] == type && _op_hierarchy_list[k] == j) {
+                        _k_compile_operator_prelude(env, lh, rh);
 
-            _k_variable_t *var = _k_get_var(env, lh->str);
+                        k_build_error_t ret = _op_compile_list[k](env, type);
 
-            /* Assembly generated should put arithmetic register into local address. */
-            if (var->flags & _K_VARIABLE_FLAG_GLOBAL)
-                _k_assemble_assignment_global(env, env->runtime->size - var->offset);
+                        if (ret != K_ERROR_NONE) return ret;
 
-            else _k_assemble_assignment(env, var->offset, var->size, var->flags & _K_VARIABLE_FLAG_FLOAT);
+                        _k_compile_operator_postlude(env, i);
 
-            break;
+                        break;
+                    }
+                }
+            }
         }
     }
 

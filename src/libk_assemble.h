@@ -116,6 +116,14 @@ void _k_assemble_move_global(k_env_t *env, unsigned long offset);
 void _k_assemble_mov_integer(k_env_t *env, long integer);
 
 /*
+ *    Generates assembly to put float into rax.
+ *
+ *    @param k_env_t *env    The environment to generate assembly for.
+ *    @param float    flt    The float to put into rax.
+ */
+void _k_assemble_mov_float(k_env_t *env, float flt);
+
+/*
  *    Generates assembly to store rcx.
  *
  *    @param k_env_t *env    The environment to generate assembly for.

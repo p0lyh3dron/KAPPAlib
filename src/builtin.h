@@ -21,10 +21,8 @@ extern const char *_keywords[];
 
 extern unsigned long _keywords_length;
 
-extern const char *_types[];
+extern const _k_type_t _types[];
 
 extern unsigned long _types_length;
-
-extern const unsigned long _type_lengths[];
 
 #endif /* _LIBK_BUILTIN_H  */

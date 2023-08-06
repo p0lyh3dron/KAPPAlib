@@ -42,30 +42,17 @@ const char *_keywords[] = {
 
 unsigned long _keywords_length = 4;
 
-const char *_types[] = {
-    "s8",
-    "s16",
-    "s32",
-    "s64",
-    "u8",
-    "u16",
-    "u32",
-    "u64",
-    "f32",
-    "f64",
+const _k_type_t _types[] = {
+    {"s8",  1, 0},
+    {"s16", 2, 0},
+    {"s32", 4, 0},
+    {"s64", 8, 0},
+    {"u8",  1, 0},
+    {"u16", 2, 0},
+    {"u32", 4, 0},
+    {"u64", 8, 0},
+    {"f32", 4, 1},
+    {"f64", 8, 1},
 };
 
 unsigned long _types_length = 10;
-
-const unsigned long _type_lengths[] = {
-    1,
-    2,
-    4,
-    8,
-    1,
-    2,
-    4,
-    8,
-    4,
-    8,
-};

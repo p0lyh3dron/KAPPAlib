@@ -1,5 +1,7 @@
 f64: sin(f64: t) {
-    return t - (t*t*t / 6.0) + (t*t*t*t*t / 120.0); 
+    f64: ret = 6.0;
+
+    return ret;
 }
 
 u64: factorial(u64: n) {

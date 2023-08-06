@@ -115,6 +115,24 @@ typedef struct {
     _k_token_t                *rh;
 } _k_operation_t;
 
+typedef union {
+    unsigned long  u;
+    long           s;
+    double         f;
+} _k_arithmetic_u;
+
+typedef struct {
+    char         *id;
+    unsigned long size;
+    char          is_float;
+} _k_type_t;
+
+typedef struct {
+    char          *type;
+    char           is_float;
+    unsigned long  size;
+} _k_local_t;
+
 typedef struct {
     char           *mem;
     unsigned long  size;
@@ -128,6 +146,9 @@ typedef struct {
     _k_variable_t  *globals;
     unsigned long  global_count;
     unsigned long  global_offset;
+    _k_type_t      cur_local;
+    _k_type_t      aux_local;
+    _k_type_t     *modify;
 } _k_runtime_t;
 
 typedef struct {
@@ -150,6 +171,7 @@ typedef enum {
     K_ERROR_JUNK_AFTER_DECLARATION,
     K_ERROR_EXPECTED_ASSIGNMENT,
     K_ERROR_EXPECTED_CONSTANT,
+    K_ERROR_UNALLOWED_FLOAT,
 } k_build_error_t;
 
 typedef struct {

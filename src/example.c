@@ -50,7 +50,7 @@ int main() {
 
     unsigned long fib;
     unsigned long factorial;
-    double        sin = 10.0;
+    float         sin = 10.0;
 
     k_call_function(env, "fib", &fib, 1, 10);
     k_call_function(env, "factorial", &factorial, 1, 10);
