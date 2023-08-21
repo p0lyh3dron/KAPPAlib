@@ -198,15 +198,15 @@ char *_k_get_function(k_env_t *env, const char *name) {
  */
 k_build_error_t _k_compile_number(k_env_t *env, _k_type_t *type) {
     if (strchr(env->cur_token->str, '.') != (char *)0x0) {
-        type->is_float = 1;
-        type->size     = 4;
+        env->runtime->current_type.is_float = 1;
+        env->runtime->current_type.size     = 4;
 
         _k_assemble_mov_float(env, atof(env->cur_token->str));
     }
 
     else {
-        type->is_float = 0;
-        type->size     = 8;
+        env->runtime->current_type.is_float = 0;
+        env->runtime->current_type.size     = 4;
 
         _k_assemble_mov_integer(env, atoi(env->cur_token->str));
     }
@@ -288,9 +288,9 @@ k_build_error_t _k_compile_identifier(k_env_t *env, _k_type_t *type) {
         else _k_assemble_move(env, var->offset, var->size, var->flags & _K_VARIABLE_FLAG_FLOAT);
     }
 
-    type->id       = var->type;
-    type->is_float = var->flags & _K_VARIABLE_FLAG_FLOAT;
-    type->size     = var->size;
+    env->runtime->current_type.id       = var->type;
+    env->runtime->current_type.is_float = var->flags & _K_VARIABLE_FLAG_FLOAT;
+    env->runtime->current_type.size     = var->size;
 
     _k_advance_token(env);
 
@@ -353,9 +353,12 @@ k_build_error_t _k_compile_token(k_env_t *env, _k_token_t *token, _k_type_t *typ
             break;
 
         case _K_TOKEN_TYPE_NEWEXPRESSION:
+            _k_assemble_store_rax(env);
             _k_advance_token(env);
 
             _k_operation_t *op = env->runtime->current_operation;
+
+            _k_type_t old_type = env->runtime->running_type;
 
             ret = _k_compile_expression(env);
 
@@ -369,10 +372,12 @@ k_build_error_t _k_compile_token(k_env_t *env, _k_token_t *token, _k_type_t *typ
                 return K_ERROR_INVALID_ENDEXPRESSION;
             }
 
-            env->runtime->current_operation = op;
+            env->runtime->current_type = env->runtime->running_type;
+            env->runtime->running_type = old_type;
 
-            type->is_float = env->runtime->current_type.is_float;
-            type->size     = env->runtime->current_type.size;
+            _k_assemble_load_rcx(env);
+
+            env->runtime->current_operation = op;
             
             break;
 
@@ -385,6 +390,11 @@ k_build_error_t _k_compile_token(k_env_t *env, _k_token_t *token, _k_type_t *typ
     env->cur_token = old;
     env->cur_type  = env->cur_token->tokenable->type;
 
+    if (env->runtime->typed == 0) {
+        env->runtime->running_type = env->runtime->current_type;
+        env->runtime->typed = 1;
+    }
+
     return ret;
 }
 
@@ -396,28 +406,6 @@ k_build_error_t _k_compile_token(k_env_t *env, _k_token_t *token, _k_type_t *typ
  *    @return k_build_error_t    The error code, if any.
  */
 k_build_error_t _k_compile_operator_prelude(k_env_t *env) {
-    _k_token_t *lh = env->runtime->current_operation->lh;
-    _k_token_t *rh = env->runtime->current_operation->rh;
-
-    _k_type_t *lh_type = &env->runtime->current_operation->lh_type;
-    _k_type_t *rh_type = &env->runtime->current_operation->rh_type;
-
-    if (lh == (_k_token_t *)0x0) {
-        _k_assemble_load_rcx(env);
-        _k_assemble_swap_rax_rcx(env);
-    }
-
-    else _k_compile_token(env, lh, lh_type);
-
-    _k_assemble_mov_rcx_rax(env);
-
-    if (rh == (_k_token_t *)0x0) {
-        _k_assemble_load_rcx(env);
-        _k_assemble_swap_rax_rcx(env);
-    }
-
-    else _k_compile_token(env, rh, rh_type);
-
     return K_ERROR_NONE;
 }
 
@@ -430,8 +418,6 @@ k_build_error_t _k_compile_operator_prelude(k_env_t *env) {
  *    @return k_build_error_t    The error code, if any.
  */
 k_build_error_t _k_compile_operator_postlude(k_env_t *env, unsigned long index) {
-    _k_assemble_store_rax(env);
-
     if (index > 0) {
         env->runtime->operations[index-1].rh      = (_k_token_t *)0x0; 
 
@@ -451,15 +437,198 @@ k_build_error_t _k_compile_operator_postlude(k_env_t *env, unsigned long index) 
 }
 
 /*
+ *    Return the hierarchy of an operator.
+ *
+ *    @param _k_op_type_e type    The type of the operator.
+ *
+ *    @return unsigned long       The hierarchy of the operator.
+ */
+unsigned long _k_get_hierarchy(_k_op_type_e type) {
+    for (unsigned long i = 0; i < _op_list_size; ++i) {
+        if (_op_list[i] == type) {
+            return _op_hierarchy_list[i];
+        }
+    }
+
+    return 0;
+}
+
+/*
  *    Compiles an operator.
  *
- *    @param k_env_t    *env       The environment to compile the operator in.
+ *    @param k_env_t      *env       The environment to compile the operator in.
+ *    @param long         *index     The start index of the operator.
+ *    @param long          tier      The tier of the operator.
  *
  *    @return k_build_error_t    The error code, if any.
  */
-k_build_error_t _k_compile_operator(k_env_t *env) {
-    _k_op_type_e type = _K_OP_NONE;
+k_build_error_t _k_compile_operator(k_env_t *env, long *index, long tier) {
+    _k_op_type_e type = env->runtime->operations[*index].type;
+    env->runtime->current_operation = &env->runtime->operations[*index];
 
+    if (tier != 0 || (*index == 0 && type != _K_OP_ASSIGN))
+        _k_compile_token(env, env->runtime->current_operation->lh, &env->runtime->current_operation->lh_type);
+
+    while (*index < env->runtime->operation_count) {
+        if (*index == env->runtime->operation_count - 1) {
+        if (type == _K_OP_ASSIGN) {
+            _k_variable_t *var = _k_get_var(env, env->runtime->operations[*index].lh->str);
+
+            _k_compile_token(env, env->runtime->current_operation->rh, &env->runtime->current_operation->rh_type);
+
+            /* Assembly generated should put arithmetic register into local address. */
+            if (var->flags & _K_VARIABLE_FLAG_GLOBAL)
+                _k_assemble_assignment_global(env, env->runtime->size - var->offset);
+
+            else _k_assemble_assignment(env, var->offset, var->size, var->flags & _K_VARIABLE_FLAG_FLOAT);
+
+            return K_ERROR_NONE;
+        }
+        for (unsigned long k = 0; k < _op_list_size; ++k) {
+            if (_op_list[k] == type) {
+                _k_assemble_mov_rcx_rax(env);
+                _k_compile_token(env, env->runtime->current_operation->rh, &env->runtime->current_operation->rh_type);
+                k_build_error_t ret = _op_compile_list[k](env, type);
+
+                if (ret != K_ERROR_NONE) return ret;
+
+                break;
+            }
+        }
+        return K_ERROR_NONE;
+    }
+        _k_op_type_e type = env->runtime->operations[*index].type;
+        env->runtime->current_operation = &env->runtime->operations[*index];
+
+        _k_op_type_e next_type = env->runtime->operations[*index + 1].type;
+
+        unsigned long hierarchy = _k_get_hierarchy(next_type);
+
+        if (hierarchy > tier) {
+            if (type == _K_OP_ASSIGN) {
+                _k_variable_t *var = _k_get_var(env, env->runtime->operations[*index].lh->str);
+
+                *index += 1;
+
+                _k_compile_operator(env, index, 0);
+
+                /* Assembly generated should put arithmetic register into local address. */
+                if (var->flags & _K_VARIABLE_FLAG_GLOBAL)
+                    _k_assemble_assignment_global(env, env->runtime->size - var->offset);
+
+                else _k_assemble_assignment(env, var->offset, var->size, var->flags & _K_VARIABLE_FLAG_FLOAT);
+
+                break;
+            }
+
+            *index += 1;
+            _k_assemble_store_rax(env);
+            _k_compile_operator(env, index, hierarchy);
+            _k_assemble_load_rcx(env);
+            _k_assemble_swap_rax_rcx(env);
+
+            for (unsigned long k = 0; k < _op_list_size; ++k) {
+                if (_op_list[k] == type) {
+                    k_build_error_t ret = _op_compile_list[k](env, type);
+
+                    if (ret != K_ERROR_NONE) return ret;
+
+                    break;
+                }
+            }
+
+            break;
+        }
+
+        if (hierarchy < tier) {
+            return K_ERROR_NONE;
+        }
+
+        else {
+            if (type == _K_OP_ASSIGN) {
+                _k_variable_t *var = _k_get_var(env, env->runtime->operations[*index].lh->str);
+
+                _k_compile_operator(env, index, 0);
+
+                /* Assembly generated should put arithmetic register into local address. */
+                if (var->flags & _K_VARIABLE_FLAG_GLOBAL)
+                    _k_assemble_assignment_global(env, env->runtime->size - var->offset);
+
+                else _k_assemble_assignment(env, var->offset, var->size, var->flags & _K_VARIABLE_FLAG_FLOAT);
+
+                break;
+            }
+
+            for (unsigned long k = 0; k < _op_list_size; ++k) {
+                if (_op_list[k] == type) {
+                    _k_assemble_mov_rcx_rax(env);
+                    _k_compile_token(env, env->runtime->current_operation->rh, &env->runtime->current_operation->rh_type);
+
+                    k_build_error_t ret = _op_compile_list[k](env, type);
+
+                    if (ret != K_ERROR_NONE) return ret;
+
+                    break;
+                }
+            }
+
+            *index += 1;
+        }
+    }
+#if 0
+    while (index >= 0) {
+        type = env->runtime->operations[index].type;
+
+        env->runtime->current_operation = &env->runtime->operations[index];
+
+        if (type == _K_OP_ASSIGN) {
+            _k_variable_t *var = _k_get_var(env, env->runtime->operations[index].lh->str);
+
+            /* Assembly generated should put arithmetic register into local address. */
+            if (var->flags & _K_VARIABLE_FLAG_GLOBAL)
+                _k_assemble_assignment_global(env, env->runtime->size - var->offset);
+
+            else _k_assemble_assignment(env, var->offset, var->size, var->flags & _K_VARIABLE_FLAG_FLOAT);
+
+            break;
+        }
+
+        else if (type == _K_OP_ADD) {
+            _k_assemble_store_rax(env);
+            _k_compile_operator(env, index - 1);
+            _k_assemble_load_rcx(env);
+            _k_compile_add(env, type);
+
+            return;
+        }
+
+        else if (type == _K_OP_SUB) {
+            _k_assemble_store_rax(env);
+            _k_compile_operator(env, index - 1);
+            _k_assemble_load_rcx(env);
+            _k_compile_sub(env, type);
+
+            return;
+        }
+
+        else {
+            for (unsigned long k = 0; k < _op_list_size; ++k) {
+                if (_op_list[k] == type) {
+                    _k_compile_operator_prelude(env);
+
+                    k_build_error_t ret = _op_compile_list[k](env, type);
+
+                    if (ret != K_ERROR_NONE) return ret;
+
+                    _k_compile_operator_postlude(env, index);
+
+                    break;
+                }
+            }
+        }
+
+        index--;
+    }
     for (unsigned long j = 0; j <= 3; ++j) {
         for (unsigned long i = 0; i < env->runtime->operation_count; ++i) {
             type                            = env->runtime->operations[i].type;
@@ -505,6 +674,8 @@ k_build_error_t _k_compile_operator(k_env_t *env) {
             }
         }
     }
+
+    #endif
 
     return K_ERROR_NONE;
 }
@@ -591,7 +762,10 @@ k_build_error_t _k_compile_expression(k_env_t *env) {
     /* If it can't find anything to parse, we're probably no longer in expression land.  */
     } while (prev != env->cur_token);
 
-    _k_compile_operator(env);
+    long index = 0;
+    env->runtime->typed = 0;
+
+    _k_compile_operator(env, &index, 0);
 
     env->runtime->current_type.is_float = env->runtime->current_operation->lh_type.is_float || env->runtime->current_operation->rh_type.is_float;
     env->runtime->current_type.size     = MAX(env->runtime->current_operation->lh_type.size, env->runtime->current_operation->rh_type.size);

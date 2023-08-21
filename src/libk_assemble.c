@@ -58,8 +58,8 @@ void _k_insert_bytecode(k_env_t *env, char *bytecode, unsigned long length, unsi
 void _k_convert_types(k_env_t *env) {
     const char *convert = (const char*)0x0;
 
-    _k_type_t lh_type = env->runtime->current_operation->lh_type;
-    _k_type_t rh_type = env->runtime->current_operation->rh_type;
+    _k_type_t lh_type = env->runtime->running_type;
+    _k_type_t rh_type = env->runtime->current_type;
 
     unsigned long size = MAX(lh_type.size, rh_type.size);
     unsigned long flt  = lh_type.is_float || rh_type.is_float;
@@ -78,6 +78,9 @@ void _k_convert_types(k_env_t *env) {
 
     if (convert != (const char*)0x0)
         _k_append_bytecode(env, (char *)convert, 5);
+
+    env->runtime->running_type.size     = size;
+    env->runtime->running_type.is_float = flt;
 }
 
 /*
@@ -432,7 +435,7 @@ void _k_assemble_store_rcx(k_env_t *env) {
     const char   *store = (const char*)0x0;
     unsigned long size;
 
-    _k_type_t *type = &env->runtime->current_operation->lh_type;
+    _k_type_t *type = &env->runtime->running_type;
 
     if (type->is_float >= 1) {
         size = 13;
@@ -465,7 +468,7 @@ void _k_assemble_store_rax(k_env_t *env) {
     const char   *store = (const char*)0x0;
     unsigned long size;
 
-    _k_type_t *type = &env->runtime->current_operation->lh_type;
+    _k_type_t *type = &env->runtime->running_type;
 
     if (type->is_float >= 1) {
         size = 13;
@@ -498,7 +501,7 @@ void _k_assemble_load_rcx(k_env_t *env) {
     const char   *load = (const char*)0x0;
     unsigned long size;
 
-    _k_type_t *type = &env->runtime->current_operation->lh_type;
+    _k_type_t *type = &env->runtime->running_type;
 
 
     if (type->is_float >= 1) {
@@ -528,7 +531,7 @@ void _k_assemble_load_rcx(k_env_t *env) {
 void _k_assemble_mov_rcx_rax(k_env_t *env) {
     const char *put = (const char*)0x0;
 
-    _k_type_t *type = &env->runtime->current_operation->lh_type;
+    _k_type_t *type = &env->runtime->running_type;
 
     if (type->is_float >= 1) {
         if (type->size == 8) put = "\xF2\x0F\x10\xC8";   /* movsd xmm1, xmm0   */
@@ -556,7 +559,7 @@ void _k_assemble_swap_rax_rcx(k_env_t *env) {
      */
     const char *swap = (const char*)0x0;
 
-    _k_type_t *type = &env->runtime->current_operation->lh_type;
+    _k_type_t *type = &env->runtime->running_type;
 
     if (type->is_float >= 1) {
         if (type->size == 8) swap = "\xF2\x0F\x10\xD0\xF2\x0F\x10\xC1\xF2\x0F\x10\xCA";
@@ -567,7 +570,7 @@ void _k_assemble_swap_rax_rcx(k_env_t *env) {
         if (type->size == 8)      swap = "\x48\x91";      /* xchg rax, rcx      */
         else if (type->size == 4) swap = "\x91";          /* xchg eax, ecx      */
         else if (type->size == 2) swap = "\x66\x91";      /* xchg ax, cx        */
-        else                      swap = "\x86\x91";      /* xchg al, cl        */
+        else                      swap = "\x86\xC8";      /* xchg al, cl        */
     }
 
     _k_append_bytecode(env, (char *)swap, strlen(swap));
@@ -598,8 +601,8 @@ void _k_assemble_addition(k_env_t *env) {
      */
     const char *addition = (const char *)0x0;
 
-    unsigned long size = MAX(env->runtime->current_operation->lh_type.size, env->runtime->current_operation->rh_type.size);
-    unsigned long flt  = env->runtime->current_operation->lh_type.is_float || env->runtime->current_operation->rh_type.is_float;
+    unsigned long size = MAX(env->runtime->running_type.size, env->runtime->current_type.size);
+    unsigned long flt  = env->runtime->running_type.is_float || env->runtime->current_type.is_float;
 
     _k_convert_types(env);
 
@@ -659,8 +662,8 @@ void _k_assemble_subtraction(k_env_t *env) {
      */
     const char *subtraction = (const char*)0x0;
 
-    unsigned long size = MAX(env->runtime->current_operation->lh_type.size, env->runtime->current_operation->rh_type.size);
-    unsigned long flt  = env->runtime->current_operation->lh_type.is_float || env->runtime->current_operation->rh_type.is_float;
+    unsigned long size = MAX(env->runtime->running_type.size, env->runtime->current_type.size);
+    unsigned long flt  = env->runtime->running_type.is_float || env->runtime->current_type.is_float;
 
     _k_convert_types(env);
 
@@ -720,8 +723,8 @@ void _k_assemble_multiplication(k_env_t *env) {
      */
     const char *multiplication = (const char *)0x0;
     
-    unsigned long size = MAX(env->runtime->current_operation->lh_type.size, env->runtime->current_operation->rh_type.size);
-    unsigned long flt  = env->runtime->current_operation->lh_type.is_float || env->runtime->current_operation->rh_type.is_float;
+    unsigned long size = MAX(env->runtime->running_type.size, env->runtime->current_type.size);
+    unsigned long flt  = env->runtime->running_type.is_float || env->runtime->current_type.is_float;
 
     _k_convert_types(env);
 
@@ -782,8 +785,8 @@ void _k_assemble_division(k_env_t *env) {
      */
     const char *division = (const char *)0x0;
 
-    unsigned long size = MAX(env->runtime->current_operation->lh_type.size, env->runtime->current_operation->rh_type.size);
-    unsigned long flt  = env->runtime->current_operation->lh_type.is_float || env->runtime->current_operation->rh_type.is_float;
+    unsigned long size = MAX(env->runtime->running_type.size, env->runtime->current_type.size);
+    unsigned long flt  = env->runtime->running_type.is_float || env->runtime->current_type.is_float;
 
     _k_convert_types(env);
 
@@ -848,8 +851,8 @@ void _k_assemble_comparison(k_env_t *env, _k_op_type_e cmp) {
      */
     const char *comparison = (const char *)0x0;
 
-    unsigned long size = MAX(env->runtime->current_operation->lh_type.size, env->runtime->current_operation->rh_type.size);
-    unsigned long flt  = env->runtime->current_operation->lh_type.is_float || env->runtime->current_operation->rh_type.is_float;
+    unsigned long size = MAX(env->runtime->running_type.size, env->runtime->current_type.size);
+    unsigned long flt  = env->runtime->running_type.is_float || env->runtime->current_type.is_float;
 
     _k_convert_types(env);
 

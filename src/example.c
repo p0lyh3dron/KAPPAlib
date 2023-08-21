@@ -48,17 +48,13 @@ int main() {
 
     free(source);
 
-    unsigned long fib;
-    unsigned long factorial;
-    float         sin = 10.0;
+    float cos = 1.0;
 
-    k_call_function(env, "fib", &fib, 1, 10);
-    k_call_function(env, "factorial", &factorial, 1, 10);
-    k_call_function(env, "sin", &sin, 1, *(unsigned long*)(&sin));
+    float retf;
 
-    printf("fib(%d) = %lu\n", 10, fib);
-    printf("factorial(%d) = %lu\n", 10, factorial);
-    printf("sin(%f) = %f\n", 10.0, sin);
+    k_call_function(env, "cos", &retf, 1, *(unsigned long*)(&cos));
+
+    printf("cos(%f) = %f\n", cos, retf);
 
     k_destroy_env(env);
     

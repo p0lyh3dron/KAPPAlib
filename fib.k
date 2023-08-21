@@ -1,9 +1,5 @@
 f32: cos_approx(f32: t) {
-    f32: num   = 9.86960440109 - 4.0*t*t;
-    f32: den   = 9.86960440109 + t*t;
-    f32: ret   = num / den;
-
-    return ret;
+    return (9.86960440109 - 4.0*t*t) / (9.86960440109 + t*t);
 }
 
 f32: cos(f32: t) {
@@ -19,9 +15,7 @@ f32: cos(f32: t) {
         return cos_approx(t); 
     }
 
-    f32: arg = 0.0 - t + 3.14159265359;
-
-    return 0.0 - cos_approx(arg);
+    return 0.0 - cos_approx(0.0 - t + 3.14159265359);
 }
 
 f32: sin (f32: t) {

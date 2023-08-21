@@ -1,0 +1,117 @@
+/*
+ *    example_fractal.c    --    example source file
+ *
+ *    Authored by Karl "p0lyh3dron" Kreuze on August 12, 2023
+ * 
+ *    This file is part of the KAPPA project.
+ * 
+ *    This is an example source file for creating fractals.
+ */
+#include <stdio.h>
+#include <stdlib.h>
+
+#include "libk.h"
+
+typedef struct {
+    unsigned char r;
+    unsigned char g;
+    unsigned char b;
+} color_t;
+
+int main() {
+    FILE *fp = fopen("fractal.k", "r");
+
+    if (fp == (FILE*)0x0) {
+        fprintf(stderr, "Failed to open example.k!\n");
+        return 1;
+    }
+
+    fseek(fp, 0, SEEK_END);
+    long fsize = ftell(fp);
+    fseek(fp, 0, SEEK_SET);
+
+    char *source = malloc(fsize + 1);
+
+    fread(source, fsize, 1, fp);
+    fclose(fp);
+
+    k_env_t *env = k_new_env();
+
+    if (env == (k_env_t*)0x0) {
+        fprintf(stderr, "Failed to create KAPPA environment!\n");
+        return 1;
+    }
+
+    k_set_log_handler(env, puts);
+
+    k_build_error_t ret = k_build(env, source);
+
+    if (ret != K_ERROR_NONE) {
+        fprintf(stderr, "Failed to build example.k!\n");
+        return 1;
+    }
+
+    free(source);
+
+    float real;
+    float imag;
+
+    float c_real;
+    float c_imag;
+
+    float ret_real;
+    float ret_imag;
+
+    color_t *pixels = (color_t*)malloc(sizeof(color_t) * 640 * 480);
+
+    for (unsigned long x = 0; x < 640; ++x) {
+        c_real = -2.075 + (float)x / 240.0;
+        for (unsigned long y = 0; y < 480; ++y) {
+            unsigned long i;
+            real = 0;
+            imag = 0;
+            c_imag = 1.2 - (float)y / 200.0;
+            for (i = 0; i < 100; ++i) {
+                k_call_function(env, "iterate_real", &ret_real, 2, *(unsigned long*)(&real), *(unsigned long*)(&imag));
+                k_call_function(env, "iterate_imag", &ret_imag, 2, *(unsigned long*)(&real), *(unsigned long*)(&imag));
+
+                real = ret_real;
+                imag = ret_imag;
+
+                k_call_function(env, "add_real", &ret_real, 2, *(unsigned long*)(&c_real), *(unsigned long*)(&c_imag));
+                k_call_function(env, "add_imag", &ret_imag, 2, *(unsigned long*)(&c_real), *(unsigned long*)(&c_imag));
+
+                real += ret_real;
+                imag += ret_imag;
+
+                if (real * real + imag * imag > 4.0) {
+                    break;
+                }
+            }
+
+            if (i == 100) {
+                i = 0;
+            }
+
+            pixels[x + y * 640].r = (unsigned char)((float)i * 4.0);
+        }
+    }
+
+    fp = fopen("fractal.ppm", "w");
+
+    fprintf(fp, "P6\n480 640\n255\n");
+
+    for (unsigned long x = 0; x < 640; ++x) {
+        for (unsigned long y = 0; y < 480; ++y) {
+            fwrite(&pixels[x + y * 640], 1, 3, fp);
+        }
+    }
+
+    fclose(fp);
+
+    free(pixels);
+
+    k_destroy_env(env);
+    
+    return 0;
+}

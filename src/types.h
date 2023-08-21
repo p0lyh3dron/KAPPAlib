@@ -150,6 +150,8 @@ typedef struct {
     unsigned long  global_offset;
     _k_operation_t *current_operation;
     _k_type_t       current_type;
+    _k_type_t       running_type;
+    char            typed;
 } _k_runtime_t;
 
 typedef struct {

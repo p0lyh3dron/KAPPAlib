@@ -14,6 +14,7 @@
 #define ARRAY_SIZE(x) (sizeof(x) / sizeof(x[0]))
 #define MAX(x, y)     ((x) > (y) ? (x) : (y))
 #define MIN(x, y)     ((x) < (y) ? (x) : (y))
+#define XOR(x, y)     ((x) && !(y) || !(x) && (y))
 
 /*
  *    Returns the current error.

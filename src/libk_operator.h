@@ -29,7 +29,7 @@ extern unsigned long      _op_hierarchy_list_size;
  * 
  *    @return k_build_error_t    The error code.
  */
-k_build_error_t k_compile_mul(k_env_t* env, _k_op_type_e type);
+k_build_error_t _k_compile_mul(k_env_t* env, _k_op_type_e type);
 
 /*
  *    Compiles the division operator.
@@ -39,7 +39,7 @@ k_build_error_t k_compile_mul(k_env_t* env, _k_op_type_e type);
  *
  *    @return k_build_error_t    The error code.
  */
-k_build_error_t k_compile_div(k_env_t* env, _k_op_type_e type);
+k_build_error_t _k_compile_div(k_env_t* env, _k_op_type_e type);
 
 /*
  *    Compiles the modulo operator.
@@ -49,7 +49,7 @@ k_build_error_t k_compile_div(k_env_t* env, _k_op_type_e type);
  * 
  *    @return k_build_error_t    The error code.
  */
-k_build_error_t k_compile_mod(k_env_t* env, _k_op_type_e type);
+k_build_error_t _k_compile_mod(k_env_t* env, _k_op_type_e type);
 
 /*
  *    Compiles the addition operator.
@@ -59,7 +59,7 @@ k_build_error_t k_compile_mod(k_env_t* env, _k_op_type_e type);
  * 
  *    @return k_build_error_t    The error code.
  */
-k_build_error_t k_compile_add(k_env_t* env, _k_op_type_e type);
+k_build_error_t _k_compile_add(k_env_t* env, _k_op_type_e type);
 
 /*
  *    Compiles the subtraction operator.
@@ -69,7 +69,7 @@ k_build_error_t k_compile_add(k_env_t* env, _k_op_type_e type);
  * 
  *    @return k_build_error_t    The error code.
  */
-k_build_error_t k_compile_sub(k_env_t* env, _k_op_type_e type);
+k_build_error_t _k_compile_sub(k_env_t* env, _k_op_type_e type);
 
 /*
  *    Compiles a comparison operator.
@@ -79,6 +79,6 @@ k_build_error_t k_compile_sub(k_env_t* env, _k_op_type_e type);
  * 
  *    @return k_build_error_t    The error code.
  */
-k_build_error_t k_compile_cmp(k_env_t* env, _k_op_type_e type);
+k_build_error_t _k_compile_cmp(k_env_t* env, _k_op_type_e type);
 
 #endif /* _LIBK_OPERATOR_H  */
