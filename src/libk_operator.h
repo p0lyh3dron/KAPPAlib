@@ -81,4 +81,32 @@ k_build_error_t _k_compile_sub(k_env_t* env, _k_op_type_e type);
  */
 k_build_error_t _k_compile_cmp(k_env_t* env, _k_op_type_e type);
 
+/*
+ *    Compiles a reference operator.
+ *
+ *    @param  k_env_t*    env    The environment to compile the operator in.
+ *    @param _k_op_type_e type   The type of the operator.
+ *
+ *    @return k_build_error_t    The error code.
+ */
+k_build_error_t _k_compile_ref(k_env_t* env, _k_op_type_e type);
+
+/*
+ *    Compiles a dereference operator.
+ *
+ *    @param  k_env_t*    env    The environment to compile the operator in.
+ *    @param _k_op_type_e type   The type of the operator.
+ *
+ *    @return k_build_error_t    The error code.
+ */
+k_build_error_t _k_compile_deref(k_env_t* env, _k_op_type_e type);
+
+/*
+ *    Compiles a pointer assignment operator.
+ *
+ *    @param  k_env_t*    env    The environment to compile the operator in.
+ *    @param _k_op_type_e type   The type of the operator.
+ */
+k_build_error_t _k_compile_ptr_assign(k_env_t* env, _k_op_type_e type);
+
 #endif /* _LIBK_OPERATOR_H  */

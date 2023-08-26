@@ -108,6 +108,13 @@ void _k_assemble_move(k_env_t *env, unsigned long offset, unsigned long size, ch
 void _k_assemble_move_global(k_env_t *env, unsigned long offset);
 
 /*
+ *    Generates assembly for a move from a local into local point to by rcx.
+ *
+ *    @param k_env_t *env    The environment to generate the move for.
+ */
+void _k_assemble_move_ptr(k_env_t *env);
+
+/*
  *    Generates assembly to put integer into rax.
  *
  *    @param k_env_t *env        The environment to generate assembly for.
@@ -164,6 +171,15 @@ void _k_assemble_swap_rax_rcx(k_env_t *env);
  *    @param k_env_t *env    The environment to generate assembly for.
  */
 void _k_assemble_mov_rdx_rax(k_env_t *env);
+
+/*
+ *    Generates assembly to dereference rax.
+ *
+ *    @param k_env_t        *env      The environment to generate assembly for.
+ *    @param unsigned long   size     The size of the variable to dereference, in bytes.
+ *    @param char            flt      Whether or not the variable is a float.
+ */
+void _k_assemble_dereference_rax(k_env_t *env, unsigned long size, char flt);
 
 /*
  *    Generates assembly for an addition.

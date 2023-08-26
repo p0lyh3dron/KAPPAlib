@@ -102,6 +102,9 @@ typedef enum {
     _K_OP_NOT,
     _K_OP_NEG,
     _K_OP_ASSIGN,
+    _K_OP_REF,
+    _K_OP_DEREF,
+    _K_OP_PTR_ASSIGN,
 } _k_op_type_e;
 
 typedef struct {

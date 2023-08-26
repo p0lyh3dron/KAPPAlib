@@ -51,6 +51,12 @@ _k_operator_t _operator_table[] = {
     {"!", _K_OP_NOT},
     {"~", _K_OP_NEG},
     {"=", _K_OP_ASSIGN},
+    {"=>", _K_OP_PTR_ASSIGN},
+};
+
+_k_operator_t _unary_operator_table[] = {
+    {"&", _K_OP_REF},
+    {"*", _K_OP_DEREF},
 };
 
 /*
@@ -149,6 +155,24 @@ _k_variable_t *_k_get_var(k_env_t *env, const char *name) {
 }
 
 /*
+ *    Gets a type from the compiler environment.
+ *
+ *    @param k_env_t    *env     The environment to get the type from.
+ *    @param const char *name    The name of the type.
+ * 
+ *    @return _k_type_t *    The type.
+ */
+_k_type_t *_k_get_type(k_env_t *env, const char *name) {
+    for (unsigned long i = 0; i < _types_length; i++) {
+        if (strcmp(_types[i].id, name) == 0) {
+            return &_types[i];
+        }
+    }
+
+    return (void *)0x0;
+}
+
+/*
  *    Places a global variable into the data section.
  *
  *    @param k_env_t       *env     The environment to place the variable in.
@@ -192,11 +216,10 @@ char *_k_get_function(k_env_t *env, const char *name) {
  *     Compiles a number.
  *
  *     @param k_env_t    *env       The environment to compile the number in.
- *     @param _k_type_t  *type      The type of the number.
  * 
  *     @return k_build_error_t    The error code, if any.
  */
-k_build_error_t _k_compile_number(k_env_t *env, _k_type_t *type) {
+k_build_error_t _k_compile_number(k_env_t *env) {
     if (strchr(env->cur_token->str, '.') != (char *)0x0) {
         env->runtime->current_type.is_float = 1;
         env->runtime->current_type.size     = 4;
@@ -238,21 +261,21 @@ k_build_error_t _k_compile_string(k_env_t *env) {
  *     Compiles an identifier.
  *
  *     @param k_env_t    *env       The environment to compile the identifier in.
- *     @param _k_type_t  *type      The type of the identifier.
  *
  *     @return k_build_error_t    The error code, if any.
  */
-k_build_error_t _k_compile_identifier(k_env_t *env, _k_type_t *type) {
-    _k_variable_t *var = _k_get_var(env, env->cur_token->str);
+k_build_error_t _k_compile_identifier(k_env_t *env) {
+    _k_variable_t *var  = _k_get_var(env, env->cur_token->str);
+    _k_type_t     *type = _k_get_type(env, env->cur_token->str);
 
-    if (var == (_k_variable_t *)0x0) {
+    if (var == (_k_variable_t *)0x0 && type == (_k_type_t *)0x0) {
         env->log(_k_get_error(env, "Undefined variable or function: %s\n", env->cur_token->str));
 
         return K_ERROR_UNDECLARED_VARIABLE;
     }
 
     /* If the variable is a function, we'll compile a function call.  */
-    if (var->flags & _K_VARIABLE_FLAG_FUNC) {
+    if (var != (_k_variable_t *)0x0 && var->flags & _K_VARIABLE_FLAG_FUNC) {
         _k_advance_token(env);
 
         /* Function call.  */
@@ -278,19 +301,59 @@ k_build_error_t _k_compile_identifier(k_env_t *env, _k_type_t *type) {
 
         /* Return the address of the function.  */
         else _k_assemble_move(env, var->offset, var->size, var->flags & _K_VARIABLE_FLAG_FLOAT);
+
+        env->runtime->current_type.id       = var->type;
+        env->runtime->current_type.is_float = var->flags & _K_VARIABLE_FLAG_FLOAT;
+        env->runtime->current_type.size     = var->size;
     }
 
     /* Set value to value pointed to by identifier.  */
-    else {
+    else if (var != (_k_variable_t *)0x0) {
         if (var->flags & _K_VARIABLE_FLAG_GLOBAL) 
             _k_assemble_move_global(env, env->runtime->size - var->offset);
 
         else _k_assemble_move(env, var->offset, var->size, var->flags & _K_VARIABLE_FLAG_FLOAT);
+
+        env->runtime->current_type.id       = var->type;
+        env->runtime->current_type.is_float = var->flags & _K_VARIABLE_FLAG_FLOAT;
+        env->runtime->current_type.size     = var->size;
     }
 
-    env->runtime->current_type.id       = var->type;
-    env->runtime->current_type.is_float = var->flags & _K_VARIABLE_FLAG_FLOAT;
-    env->runtime->current_type.size     = var->size;
+    else if (type != (_k_type_t *)0x0) {
+        _k_advance_token(env);
+        
+        /* Cast.  */
+        if (env->cur_type == _K_TOKEN_TYPE_NEWEXPRESSION) {
+            _k_advance_token(env);
+            
+            _K_COMPILE_EXP(env);
+
+            /* TODO: CASTING  */
+        }
+
+        /* Dereference generic pointer as.  */
+        else if (env->cur_type == _K_TOKEN_TYPE_NEWINDEX) {
+            _k_advance_token(env);
+
+            _k_type_t old_type = env->runtime->running_type;
+
+            _K_COMPILE_EXP(env);
+
+            env->runtime->running_type = old_type;
+
+            _k_assemble_dereference_rax(env, type->size, type->is_float);
+
+            env->runtime->current_type.id       = type->id;
+            env->runtime->current_type.is_float = type->is_float;
+            env->runtime->current_type.size     = type->size;
+        }
+
+        else {
+            env->log(_k_get_error(env, "Expected end of expression, got %s\n", env->cur_token->str));
+
+            return K_ERROR_INVALID_ENDEXPRESSION;
+        }
+    }
 
     _k_advance_token(env);
 
@@ -332,6 +395,10 @@ k_build_error_t _k_compile_new_expression(k_env_t *env) {
  *    @return k_build_error_t    The error code, if any.
  */
 k_build_error_t _k_compile_token(k_env_t *env, _k_token_t *token, _k_type_t *type) {
+    if (token == (_k_token_t *)0x0) {
+        return K_ERROR_NONE;
+    }
+
     _k_token_t *old = env->cur_token;
 
     env->cur_token = token;
@@ -341,7 +408,7 @@ k_build_error_t _k_compile_token(k_env_t *env, _k_token_t *token, _k_type_t *typ
 
     switch (token->tokenable->type) {
         case _K_TOKEN_TYPE_NUMBER:
-            ret = _k_compile_number(env, type);
+            ret = _k_compile_number(env);
             break;
 
         case _K_TOKEN_TYPE_STRING:
@@ -349,7 +416,7 @@ k_build_error_t _k_compile_token(k_env_t *env, _k_token_t *token, _k_type_t *typ
             break;
 
         case _K_TOKEN_TYPE_IDENTIFIER:
-            ret = _k_compile_identifier(env, type);
+            ret = _k_compile_identifier(env);
             break;
 
         case _K_TOKEN_TYPE_NEWEXPRESSION:
@@ -461,8 +528,11 @@ k_build_error_t _k_compile_assignment(k_env_t *env, _k_operation_t *op) {
  *    @return k_build_error_t    The error code, if any.
  */
 k_build_error_t _k_compile_operator(k_env_t *env, long *index, long tier) {
-    _k_op_type_e type = env->runtime->operations[*index].type;
-    _k_operation_t *op = &env->runtime->operations[*index];
+    _k_type_t old = env->runtime->running_type;
+    env->runtime->typed = 0;
+
+    _k_op_type_e    type  = env->runtime->operations[*index].type;
+    _k_operation_t *op    = &env->runtime->operations[*index];
 
     /* Don't compile LH of assignment, but compile first token, since we need to operate on it. */
     if (tier != 0 || (*index == 0 && type != _K_OP_ASSIGN))
@@ -473,19 +543,24 @@ k_build_error_t _k_compile_operator(k_env_t *env, long *index, long tier) {
         return _k_compile_token(env, op->lh, &op->lh_type);
 
     while (*index < env->runtime->operation_count) {
+        type = env->runtime->operations[*index].type;
+        op   = &env->runtime->operations[*index];
+        
         if (*index == env->runtime->operation_count - 1) {
-            if (type == _K_OP_ASSIGN)
+            if (type == _K_OP_ASSIGN) {
+                env->runtime->running_type = old;
+
                 return _k_compile_assignment(env, op);
+            }
             
             _k_assemble_mov_rcx_rax(env);
             _k_compile_token(env, op->rh, &op->rh_type);
             _k_compile_operator_select(env, type);
 
+            env->runtime->running_type = old;
+
             return K_ERROR_NONE;
         }
-
-        type = env->runtime->operations[*index].type;
-        op   = &env->runtime->operations[*index];
 
         _k_op_type_e  next_type = env->runtime->operations[*index + 1].type;
         unsigned long hierarchy = _k_get_hierarchy(next_type);
@@ -546,9 +621,28 @@ k_build_error_t _k_compile_operator(k_env_t *env, long *index, long tier) {
  */
 k_build_error_t _k_skip_to_operator(k_env_t *env) {
     if (env->cur_type == _K_TOKEN_TYPE_NUMBER ||
-        env->cur_type == _K_TOKEN_TYPE_STRING ||
-        env->cur_type == _K_TOKEN_TYPE_IDENTIFIER) {
+        env->cur_type == _K_TOKEN_TYPE_STRING) {
         _k_advance_token(env);
+    }
+
+    else if (env->cur_type == _K_TOKEN_TYPE_IDENTIFIER) {
+        _k_advance_token(env);
+
+        if (env->cur_type == _K_TOKEN_TYPE_NEWEXPRESSION) {
+            while (env->cur_type != _K_TOKEN_TYPE_ENDEXPRESSION) {
+                _k_advance_token(env);
+            }
+
+            _k_advance_token(env);
+        }
+
+        if (env->cur_type == _K_TOKEN_TYPE_NEWINDEX) {
+            while (env->cur_type != _K_TOKEN_TYPE_ENDINDEX) {
+                _k_advance_token(env);
+            }
+
+            _k_advance_token(env);
+        }
     }
 
     else if (env->cur_type == _K_TOKEN_TYPE_NEWEXPRESSION) {
@@ -558,6 +652,42 @@ k_build_error_t _k_skip_to_operator(k_env_t *env) {
 
         _k_advance_token(env);
     }
+}
+
+/*
+ *    Gets the operator type from a token.
+ *
+ *    @param k_env_t    *env       The environment to get the operator type from.
+ *    @param _k_token_t *token     The token to get the operator type from.
+ * 
+ *    @return _k_op_type_e    The operator type.
+ */
+_k_op_type_e _k_get_operator_type(k_env_t *env, _k_token_t *token) {
+    for (unsigned long i = 0; i < ARRAY_SIZE(_operator_table); i++) {
+        if (strcmp(token->str, _operator_table[i].operator) == 0) {
+            return _operator_table[i].type;
+        }
+    }
+
+    return _K_OP_NONE;
+}
+
+/*
+ *    Gets the unary operator type from a token.
+ *
+ *    @param k_env_t    *env       The environment to get the unary operator type from.
+ *    @param _k_token_t *token     The token to get the unary operator type from.
+ * 
+ *    @return _k_op_type_e    The unary operator type.
+ */
+_k_op_type_e _k_get_unary_operator_type(k_env_t *env, _k_token_t *token) {
+    for (unsigned long i = 0; i < ARRAY_SIZE(_unary_operator_table); i++) {
+        if (strcmp(token->str, _unary_operator_table[i].operator) == 0) {
+            return _unary_operator_table[i].type;
+        }
+    }
+
+    return _K_OP_NONE;
 }
 
 /*
@@ -572,9 +702,11 @@ k_build_error_t _k_compile_expression(k_env_t *env) {
     _k_token_t      *prev      = (_k_token_t *)0x0;
     _k_token_t      *lh        = (_k_token_t *)0x0;
     _k_token_t      *rh        = (_k_token_t *)0x0;
+    _k_op_type_e     op;
 
     _k_operation_t *old       = env->runtime->operations;
     unsigned long   old_count = env->runtime->operation_count;
+    char            old_type  = env->runtime->typed;
     char            parsed    = 0;
 
     env->runtime->operations      = (_k_operation_t *)0x0;
@@ -585,7 +717,14 @@ k_build_error_t _k_compile_expression(k_env_t *env) {
 
         /* Unary operator.  */
         if (*type == _K_TOKEN_TYPE_OPERATOR) {
+            op = _k_get_unary_operator_type(env, env->cur_token);
             _k_advance_token(env);
+
+            _k_add_operation(env, op, (_k_token_t *)0x0, env->cur_token);
+
+            parsed = 1;
+
+            continue;
         }
 
         lh = env->cur_token;
@@ -594,18 +733,15 @@ k_build_error_t _k_compile_expression(k_env_t *env) {
             _k_skip_to_operator(env);
         }
 
-        for (unsigned long i = 0; i < ARRAY_SIZE(_operator_table); i++) {
-            if (strcmp(env->cur_token->str, _operator_table[i].operator) == 0) {
-                parsed = 1;
+        op = _k_get_operator_type(env, env->cur_token);
+        if (op != _K_OP_NONE) {
+            parsed = 1;
 
-                _k_advance_token(env);
+            _k_advance_token(env);
 
-                rh = env->cur_token;
+            rh = env->cur_token;
 
-                _k_add_operation(env, _operator_table[i].type, lh, rh);
-
-                break;
-            }
+            _k_add_operation(env, op, lh, rh);
         }
 
         if (parsed == 0) {
@@ -625,6 +761,7 @@ k_build_error_t _k_compile_expression(k_env_t *env) {
 
     env->runtime->operations      = old;
     env->runtime->operation_count = old_count;
+    env->runtime->typed           = old_type;
 
     return K_ERROR_NONE;
 }

@@ -85,6 +85,7 @@ k_build_error_t _k_compile_add(k_env_t* env, _k_op_type_e type) {
  *    @return k_build_error_t    The error code.
  */
 k_build_error_t _k_compile_sub(k_env_t* env, _k_op_type_e type) {
+    _k_assemble_swap_rax_rcx(env);
     _k_assemble_subtraction(env);
 
     return K_ERROR_NONE;
@@ -104,6 +105,41 @@ k_build_error_t _k_compile_cmp(k_env_t* env, _k_op_type_e type) {
     return K_ERROR_NONE;
 }
 
+/*
+ *    Compiles a reference operator.
+ *
+ *    @param  k_env_t*    env    The environment to compile the operator in.
+ *    @param _k_op_type_e type   The type of the operator.
+ *
+ *    @return k_build_error_t    The error code.
+ */
+k_build_error_t _k_compile_ref(k_env_t* env, _k_op_type_e type) {
+
+}
+
+/*
+ *    Compiles a dereference operator.
+ *
+ *    @param  k_env_t*    env    The environment to compile the operator in.
+ *    @param _k_op_type_e type   The type of the operator.
+ *
+ *    @return k_build_error_t    The error code.
+ */
+k_build_error_t _k_compile_deref(k_env_t* env, _k_op_type_e type) {
+    _k_assemble_dereference_rax(env);
+}
+
+/*
+ *    Compiles a pointer assignment operator.
+ *
+ *    @param  k_env_t*    env    The environment to compile the operator in.
+ *    @param _k_op_type_e type   The type of the operator.
+ */
+k_build_error_t _k_compile_ptr_assign(k_env_t* env, _k_op_type_e type) {
+    _k_assemble_swap_rax_rcx(env);
+    _k_assemble_move_ptr(env);
+}
+
 const _k_op_type_e _op_list[] = {
     _K_OP_MUL,
     _K_OP_DIV,
@@ -116,7 +152,10 @@ const _k_op_type_e _op_list[] = {
     _K_OP_GE,
     _K_OP_E,
     _K_OP_NE,
-    _K_OP_ASSIGN
+    _K_OP_ASSIGN,
+    _K_OP_REF,
+    _K_OP_DEREF,
+    _K_OP_PTR_ASSIGN,
 };
 
 unsigned long                 _op_list_size = ARRAY_SIZE(_op_list);
@@ -133,6 +172,10 @@ const k_build_error_t       (*_op_compile_list[])(k_env_t*, _k_op_type_e) = {
     _k_compile_cmp,
     _k_compile_cmp,
     _k_compile_cmp,
+    0x0,
+    _k_compile_ref,
+    _k_compile_deref,
+    _k_compile_ptr_assign
 };
 
 unsigned long      _op_compile_list_size = ARRAY_SIZE(_op_compile_list);
@@ -149,6 +192,9 @@ unsigned long      _op_hierarchy_list[] = {
     1,
     1,
     1,
+    0,
+    4,
+    4,
     0
 };
 

@@ -342,6 +342,31 @@ void _k_assemble_assignment_global(k_env_t *env, unsigned long offset) {
 }
 
 /*
+ *    Generates assembly for a move from a local into local point to by rcx.
+ *
+ *    @param k_env_t *env    The environment to generate the move for.
+ */
+void _k_assemble_move_ptr(k_env_t *env) {
+    /*
+     *    48 89 01    mov [rcx], rax
+     */
+    const char *move = (const char *)0x0;
+
+    if (env->runtime->current_type.is_float == 0) {
+        if (env->runtime->current_type.size == 8)           move = "\x48\x89\x01";
+        else if (env->runtime->current_type.size == 4)      move = "\x89\x01";
+        else if (env->runtime->current_type.size == 2)      move = "\x66\x89\x01";
+        else                                                move = "\x88\x01";
+    }
+    else {
+        if (env->runtime->current_type.size == 8)           move = "\xF2\x0F\x11\x01";
+        else if (env->runtime->current_type.size == 4)      move = "\xF3\x0F\x11\x01";
+    }
+
+    _k_append_bytecode(env, (char *)move, strlen(move));
+}
+
+/*
  *    Generates assembly for a move into a register.
  *
  *    @param k_env_t *env    The environment to generate the move for.
@@ -588,6 +613,33 @@ void _k_assemble_mov_rdx_rax(k_env_t *env) {
     const char *put = "\x48\x89\xD0";
 
     _k_append_bytecode(env, (char *)put, 3);
+}
+
+/*
+ *    Generates assembly to dereference rax.
+ *
+ *    @param k_env_t        *env      The environment to generate assembly for.
+ *    @param unsigned long   size     The size of the variable to dereference, in bytes.
+ *    @param char            flt      Whether or not the variable is a float.
+ */
+void _k_assemble_dereference_rax(k_env_t *env, unsigned long size, char flt) {
+    /*
+     *    48 8B 00    mov rax, [rax]
+     */
+    const char *dereference = (const char *)0x0;
+
+    if (flt == 0) {
+        if (size == 8)      dereference = "\x48\x8B\x00";      /* mov rax, [rax]    */
+        else if (size == 4) dereference = "\x8B\x00";          /* mov eax, [rax]    */
+        else if (size == 2) dereference = "\x66\x8B\x00";      /* mov ax, [rax]     */
+        else                dereference = "\x8A\x00";          /* mov al, [rax]     */
+    }
+    else {
+        if (size == 8)      dereference = "\xF2\x0F\x10\x00";   /* movsd xmm0, [rax] */
+        else                dereference = "\xF3\x0F\x10\x00";   /* movss xmm0, [rax] */
+    }
+
+    _k_append_bytecode(env, (char *)dereference, strlen(dereference) + 1);
 }
 
 /*
