@@ -24,6 +24,8 @@ k_build_error_t _k_compile_statement(k_env_t*);
 #include <string.h>
 #include <sys/mman.h>
 
+#include "tree.h"
+
 #include "builtin.h"
 #include "util.h"
 
@@ -522,91 +524,38 @@ k_build_error_t _k_compile_assignment(k_env_t *env, _k_operation_t *op) {
  *    Compiles an operator.
  *
  *    @param k_env_t      *env       The environment to compile the operator in.
- *    @param long         *index     The start index of the operator.
+ *    @param node_t       *root      The root of the operation tree.
  *    @param long          tier      The tier of the operator.
  *
  *    @return k_build_error_t    The error code, if any.
  */
-k_build_error_t _k_compile_operator(k_env_t *env, long *index, long tier) {
-    _k_type_t old = env->runtime->running_type;
-    env->runtime->typed = 0;
+k_build_error_t _k_compile_operator(k_env_t *env, node_t *root, long tier) {
+    if (root == (node_t *)0x0) return K_ERROR_NONE;
+    
+    if (root->id == 0) {
+        _k_token_t *token = *(_k_token_t **)root->data;
 
-    _k_op_type_e    type  = env->runtime->operations[*index].type;
-    _k_operation_t *op    = &env->runtime->operations[*index];
+        _k_compile_token(env, token, (_k_type_t *)0x0);
+    }
 
-    /* Don't compile LH of assignment, but compile first token, since we need to operate on it. */
-    if (tier != 0 || (*index == 0 && type != _K_OP_ASSIGN))
-        _k_compile_token(env, op->lh, &op->lh_type);
+    else if (root->id == 1) {
+        _k_op_type_e type  = *(_k_op_type_e *)root->data;
+        _k_op_type_e left  = *(_k_op_type_e *)root->left->data;
+        _k_op_type_e right = *(_k_op_type_e *)root->right->data;
 
-    /* If there's a lone token, it will not have an operator.  */
-    if (type == _K_OP_NONE)
-        return _k_compile_token(env, op->lh, &op->lh_type);
-
-    while (*index < env->runtime->operation_count) {
-        type = env->runtime->operations[*index].type;
-        op   = &env->runtime->operations[*index];
-        
-        if (*index == env->runtime->operation_count - 1) {
-            if (type == _K_OP_ASSIGN) {
-                env->runtime->running_type = old;
-
-                return _k_compile_assignment(env, op);
-            }
-            
-            _k_assemble_mov_rcx_rax(env);
-            _k_compile_token(env, op->rh, &op->rh_type);
-            _k_compile_operator_select(env, type);
-
-            env->runtime->running_type = old;
-
-            return K_ERROR_NONE;
-        }
-
-        _k_op_type_e  next_type = env->runtime->operations[*index + 1].type;
-        unsigned long hierarchy = _k_get_hierarchy(next_type);
-
-        /* If we are in higher order of operations, pause and evaluate the next.  */
-        if (hierarchy > tier) {
-            if (type == _K_OP_ASSIGN) {
-                *index += 1;
-
-                _k_compile_operator(env, index, 0);
-                _k_compile_assignment(env, op);
-
-                break;
-            }
-
-            *index += 1;
-
+        if (_k_get_hierarchy(type) != tier) {
             _k_assemble_store_rax(env);
-            _k_compile_operator(env, index, hierarchy);
-            _k_assemble_load_rcx(env);
-            _k_assemble_swap_rax_rcx(env);
-
-            _k_compile_operator_select(env, type);
-
-            break;
         }
 
-        /* Simply return if we run into lower order, a previous loop will continue.  */
-        if (hierarchy < tier)
-            return K_ERROR_NONE;
-
-        /* Compile all of the same order.  */
-        if (type == _K_OP_ASSIGN) {
-            index += 1;
-
-            _k_compile_operator(env, index, 0);
-            _k_compile_assignment(env, op);
-
-            break;
-        }
-
+        _k_compile_operator(env, root->left, tier);
         _k_assemble_mov_rcx_rax(env);
-        _k_compile_token(env, op->rh, &op->rh_type);
+        _k_compile_operator(env, root->right, tier);
+
         _k_compile_operator_select(env, type);
 
-        *index += 1;
+        if (_k_get_hierarchy(type) != tier) {
+            _k_assemble_load_rcx(env);
+        }
     }
 
     return K_ERROR_NONE;
@@ -691,6 +640,35 @@ _k_op_type_e _k_get_unary_operator_type(k_env_t *env, _k_token_t *token) {
 }
 
 /*
+ *    Displays the operation tree.
+ *
+ *    @param node_t *root    The root of the tree.
+ *    @param long    depth   The depth of the tree.
+ */
+void _k_display_tree(node_t *root, long depth) {
+    if (root == (node_t *)0x0) return;
+
+    _k_display_tree(root->right, depth + 1);
+
+    for (long i = 0; i < depth; i++) {
+        printf("  ");
+    }
+
+    if (root->id == 0) {
+        _k_token_t *token = *(_k_token_t **)root->data;
+
+        printf("%s\n", token->str);
+    }
+
+    else if (root->id == 1) {
+        _k_op_type_e type = *(_k_op_type_e *)root->data;
+
+        printf("%s\n", _operator_table[type].operator);
+    }
+    _k_display_tree(root->left, depth + 1);
+}
+
+/*
  *    Compiles an expression.
  *
  *    @param k_env_t    *env       The environment to parse the expression in.
@@ -700,68 +678,89 @@ _k_op_type_e _k_get_unary_operator_type(k_env_t *env, _k_token_t *token) {
 k_build_error_t _k_compile_expression(k_env_t *env) {
     _k_token_type_e *type      = &env->cur_type;
     _k_token_t      *prev      = (_k_token_t *)0x0;
-    _k_token_t      *lh        = (_k_token_t *)0x0;
-    _k_token_t      *rh        = (_k_token_t *)0x0;
     _k_op_type_e     op;
 
-    _k_operation_t *old       = env->runtime->operations;
-    unsigned long   old_count = env->runtime->operation_count;
-    char            old_type  = env->runtime->typed;
-    char            parsed    = 0;
-
-    env->runtime->operations      = (_k_operation_t *)0x0;
-    env->runtime->operation_count = 0;
+    node_t *root    = (node_t *)0x0;
+    node_t *current = (node_t *)0x0;
 
     do {
         prev = env->cur_token;
 
-        /* Unary operator.  */
         if (*type == _K_TOKEN_TYPE_OPERATOR) {
-            op = _k_get_unary_operator_type(env, env->cur_token);
+            op = _k_get_operator_type(env, env->cur_token);
+
             _k_advance_token(env);
 
-            _k_add_operation(env, op, (_k_token_t *)0x0, env->cur_token);
+            node_t *new = new_node(sizeof(op), 1, &op);
 
-            parsed = 1;
+            if (root == (node_t *)0x0) {
+                root    = new;
+                current = root;
+            }
 
-            continue;
+            else if (current->id == 1) {
+                unsigned long hierarchy         = _k_get_hierarchy(op);
+                unsigned long current_hierarchy = _k_get_hierarchy(*(_k_op_type_e *)current->data);
+
+                while (current_hierarchy >= hierarchy && current->parent != (node_t *)0x0) {
+                    current = current->parent;
+                    current_hierarchy = _k_get_hierarchy(*(_k_op_type_e *)current->data);
+                }
+
+                /* Current is the root node.  */
+                if (current->parent == (node_t *)0x0 && current_hierarchy >= hierarchy) {
+                    root            = new;
+                    new->left       = current;
+                    current->parent = new;
+                }
+
+                else {
+                    node_t *right = current->right;
+
+                    new->left             = right;
+                    right->parent         = new;
+                    current->right        = new;
+                    new->parent           = current;
+                    current               = new;
+                }
+            }
+
+            else if (current->id == 0) {
+                new->left       = current;
+                current->parent = new;
+                root            = new;
+                current         = root;
+            }
         }
 
-        lh = env->cur_token;
+        else if (*type == _K_TOKEN_TYPE_NUMBER ||
+                 *type == _K_TOKEN_TYPE_STRING ||
+                 *type == _K_TOKEN_TYPE_IDENTIFIER) {
+            node_t *new = new_node(sizeof(_k_token_t*), 0, &env->cur_token);
 
-        if (*type != _K_TOKEN_TYPE_OPERATOR) {
+            if (root == (node_t *)0x0) {
+                root    = new;
+                current = root;
+            }
+
+            else {
+                if (current->left  == (node_t *)0x0) current->left  = new;
+                if (current->right == (node_t *)0x0) current->right = new;
+
+                new->parent = current;
+            }
+
             _k_skip_to_operator(env);
-        }
-
-        op = _k_get_operator_type(env, env->cur_token);
-        if (op != _K_OP_NONE) {
-            parsed = 1;
-
-            _k_advance_token(env);
-
-            rh = env->cur_token;
-
-            _k_add_operation(env, op, lh, rh);
-        }
-
-        if (parsed == 0) {
-            parsed = 1;
-
-            _k_add_operation(env, _K_OP_NONE, lh, (_k_token_t *)0x0);
         }
     /* If it can't find anything to parse, we're probably no longer in expression land.  */
     } while (prev != env->cur_token);
 
-    long index = 0;
-    env->runtime->typed = 0;
+    _k_compile_operator(env, root, root->id == 1 ? _k_get_hierarchy(*(_k_op_type_e *)root->data) : 0);
 
-    _k_compile_operator(env, &index, 0);
-
-    free(env->runtime->operations);
-
-    env->runtime->operations      = old;
-    env->runtime->operation_count = old_count;
-    env->runtime->typed           = old_type;
+    printf("\n");
+    _k_display_tree(root, 0);
+    printf("\n");
+    free_tree(root);
 
     return K_ERROR_NONE;
 }
