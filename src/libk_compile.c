@@ -484,38 +484,18 @@ unsigned long _k_get_hierarchy(_k_op_type_e type) {
  *    Selects the correct operator compile function.
  *
  *    @param k_env_t       *env       The environment to compile the operator in.
- *    @param _k_op_type_e   type      The type of the operator.
+ *    @param node_t        *root      The root of the operation tree.
  * 
  *    @return k_build_error_t    The error code, if any.
  */
-k_build_error_t _k_compile_operator_select(k_env_t *env, _k_op_type_e type) {
+k_build_error_t _k_compile_operator_select(k_env_t *env, node_t *root) {
+    _k_op_type_e type = *(_k_op_type_e *)root->data;
+
     for (unsigned long i = 0; i < _op_list_size; ++i) {
         if (_op_list[i] == type) {
-            return _op_compile_list[i](env, type);
+            return _op_compile_list[i](env, root);
         }
     }
-
-    return K_ERROR_NONE;
-}
-
-/*
- *    Compiles the assignment operator.
- *
- *    @param k_env_t        *env       The environment to compile the operator in.
- *    @param _k_operation_t *op        The operation to compile.
- *
- *    @return k_build_error_t    The error code, if any.
- */
-k_build_error_t _k_compile_assignment(k_env_t *env, _k_operation_t *op) {
-    _k_variable_t *var = _k_get_var(env, op->lh->str);
-
-    _k_compile_token(env, op->rh, &op->rh_type);
-
-    /* Assembly generated should put arithmetic register into local address. */
-    if (var->flags & _K_VARIABLE_FLAG_GLOBAL)
-        _k_assemble_assignment_global(env, env->runtime->size - var->offset);
-
-    else _k_assemble_assignment(env, var->offset, var->size, var->flags & _K_VARIABLE_FLAG_FLOAT);
 
     return K_ERROR_NONE;
 }
@@ -540,22 +520,37 @@ k_build_error_t _k_compile_operator(k_env_t *env, node_t *root, long tier) {
 
     else if (root->id == 1) {
         _k_op_type_e type  = *(_k_op_type_e *)root->data;
-        _k_op_type_e left  = *(_k_op_type_e *)root->left->data;
-        _k_op_type_e right = *(_k_op_type_e *)root->right->data;
+        _k_op_type_e rtype = *(_k_op_type_e *)root->right->data;
 
-        if (_k_get_hierarchy(type) != tier) {
-            _k_assemble_store_rax(env);
-        }
+        _k_type_t old;
 
         _k_compile_operator(env, root->left, tier);
-        _k_assemble_mov_rcx_rax(env);
+
+        if (root->right->id == 1 && _k_get_hierarchy(rtype) > tier) {
+            old = env->runtime->running_type;
+
+            env->runtime->typed = 0;
+
+            _k_assemble_store_rax(env);
+        }
+        
+        else {
+            _k_assemble_mov_rcx_rax(env);
+        }
+
         _k_compile_operator(env, root->right, tier);
 
-        _k_compile_operator_select(env, type);
+        if (root->right->id == 1 && _k_get_hierarchy(rtype) > tier) {
+            env->runtime->typed = 1;
 
-        if (_k_get_hierarchy(type) != tier) {
+            env->runtime->current_type = env->runtime->running_type;
+            env->runtime->running_type = old;
+
             _k_assemble_load_rcx(env);
+            _k_assemble_swap_rax_rcx(env);
         }
+
+        _k_compile_operator_select(env, root);
     }
 
     return K_ERROR_NONE;
@@ -712,6 +707,7 @@ k_build_error_t _k_compile_expression(k_env_t *env) {
                     root            = new;
                     new->left       = current;
                     current->parent = new;
+                    current         = root;
                 }
 
                 else {
@@ -733,9 +729,10 @@ k_build_error_t _k_compile_expression(k_env_t *env) {
             }
         }
 
-        else if (*type == _K_TOKEN_TYPE_NUMBER ||
-                 *type == _K_TOKEN_TYPE_STRING ||
-                 *type == _K_TOKEN_TYPE_IDENTIFIER) {
+        else if (*type == _K_TOKEN_TYPE_NUMBER     ||
+                 *type == _K_TOKEN_TYPE_STRING     ||
+                 *type == _K_TOKEN_TYPE_IDENTIFIER ||
+                 *type == _K_TOKEN_TYPE_NEWEXPRESSION) {
             node_t *new = new_node(sizeof(_k_token_t*), 0, &env->cur_token);
 
             if (root == (node_t *)0x0) {
@@ -755,11 +752,18 @@ k_build_error_t _k_compile_expression(k_env_t *env) {
     /* If it can't find anything to parse, we're probably no longer in expression land.  */
     } while (prev != env->cur_token);
 
-    _k_compile_operator(env, root, root->id == 1 ? _k_get_hierarchy(*(_k_op_type_e *)root->data) : 0);
+    char old_typed = env->runtime->typed;
+
+    env->runtime->typed = 0;
 
     printf("\n");
     _k_display_tree(root, 0);
     printf("\n");
+
+    _k_compile_operator(env, root, root->id == 1 ? _k_get_hierarchy(*(_k_op_type_e *)root->data) : 0);
+
+    env->runtime->typed = old_typed;
+
     free_tree(root);
 
     return K_ERROR_NONE;

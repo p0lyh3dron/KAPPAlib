@@ -556,7 +556,7 @@ void _k_assemble_load_rcx(k_env_t *env) {
 void _k_assemble_mov_rcx_rax(k_env_t *env) {
     const char *put = (const char*)0x0;
 
-    _k_type_t *type = &env->runtime->running_type;
+    _k_type_t *type = &env->runtime->current_type;
 
     if (type->is_float >= 1) {
         if (type->size == 8) put = "\xF2\x0F\x10\xC8";   /* movsd xmm1, xmm0   */
