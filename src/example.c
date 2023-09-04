@@ -1,20 +1,25 @@
 /*
- *    example.c    --    example source file
+ *    example_fractal.c    --    example source file
  *
- *    Authored by Karl "p0lyh3dron" Kreuze on February 27, 2023
+ *    Authored by Karl "p0lyh3dron" Kreuze on August 12, 2023
  * 
  *    This file is part of the KAPPA project.
  * 
- *    This is an example source file for the usage of the KAPPA
- *    interpreter.
+ *    This is an example source file for creating fractals.
  */
 #include <stdio.h>
 #include <stdlib.h>
 
 #include "libk.h"
 
+typedef struct {
+    unsigned char r;
+    unsigned char g;
+    unsigned char b;
+} color_t;
+
 int main() {
-    FILE *fp = fopen("fib.k", "r");
+    FILE *fp = fopen("math.k", "r");
 
     if (fp == (FILE*)0x0) {
         fprintf(stderr, "Failed to open example.k!\n");
@@ -48,13 +53,27 @@ int main() {
 
     free(source);
 
-    float cos = 1.0;
+    float cos = 3.0;
+    k_call_function(env, "cos", &cos, 1, *(unsigned long*)&cos);
+    
+    float sin = 4.0;
+    k_call_function(env, "sin", &sin, 1, *(unsigned long*)&sin);
 
-    float retf;
+    float log = 5.0;
+    k_call_function(env, "log", &log, 1, *(unsigned long*)&log);
 
-    k_call_function(env, "cos", &retf, 1, *(unsigned long*)(&cos));
+    float exp = 6.0;
+    k_call_function(env, "exp", &exp, 1, *(unsigned long*)&exp);
 
-    printf("cos(%f) = %f\n", cos, retf);
+    float pow_base = 2.0;
+    float pow_exp  = 0.5;
+    k_call_function(env, "pow", &pow_base, 2, *(unsigned long*)&pow_base, *(unsigned long*)&pow_exp);
+
+    printf("cos(3.0) = %f\n", cos);
+    printf("sin(4.0) = %f\n", sin);
+    printf("ln(5.0)  = %f\n", log);
+    printf("exp(6.0) = %f\n", exp);
+    printf("pow(2.0, 0.5) = %f\n", pow_base);
 
     k_destroy_env(env);
     

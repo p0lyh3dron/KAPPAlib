@@ -215,6 +215,52 @@ char *_k_get_function(k_env_t *env, const char *name) {
 }
 
 /*
+ *    Gets the size of a function parameter.
+ *
+ *    @param k_env_t    *env       The environment to get the parameter type from.
+ *    @param const char *name      The name of the function.
+ *    @param unsigned long index   The index of the parameter.
+ * 
+ *    @return unsigned long        The size of the parameter.
+ */
+unsigned long _k_get_function_parameter_size(k_env_t *env, const char *name, unsigned long index) {
+    for (unsigned long i = 0; i < env->runtime->function_count; i++) {
+        if (strcmp(env->runtime->function_table[i].name, name) == 0) {
+            if (index >= env->runtime->function_table[i].parameter_count) {
+                return 0;
+            }
+
+            return env->runtime->function_table[i].parameters[index].size;
+        }
+    }
+
+    return 0;
+}
+
+/*
+ *    Returns if a function parameter is a float.
+ *
+ *    @param k_env_t    *env       The environment to get the parameter type from.
+ *    @param const char *name      The name of the function.
+ *    @param unsigned long index   The index of the parameter.
+ * 
+ *    @return char        Whether or not the parameter is a float.
+ */
+char _k_get_function_parameter_float(k_env_t *env, const char *name, unsigned long index) {
+    for (unsigned long i = 0; i < env->runtime->function_count; i++) {
+        if (strcmp(env->runtime->function_table[i].name, name) == 0) {
+            if (index >= env->runtime->function_table[i].parameter_count) {
+                return 0;
+            }
+
+            return env->runtime->function_table[i].parameters[index].flags & _K_VARIABLE_FLAG_FLOAT;
+        }
+    }
+
+    return 0;
+}
+
+/*
  *     Compiles a number.
  *
  *     @param k_env_t    *env       The environment to compile the number in.
@@ -285,12 +331,25 @@ k_build_error_t _k_compile_identifier(k_env_t *env) {
             _k_advance_token(env);
             _k_assemble_store_rcx(env);
 
-            unsigned long param_count = 0;
+            unsigned long integer_count = 0;
+            unsigned long float_count   = 0;
 
             while (env->cur_type != _K_TOKEN_TYPE_ENDEXPRESSION) {
+                _k_type_t old_type = env->runtime->running_type;
+
                 _K_COMPILE_EXP(env);
 
-                _k_assemble_parameter_load(env, param_count++, var->size, var->flags & _K_VARIABLE_FLAG_FLOAT);
+                env->runtime->running_type = old_type;
+
+                char is_float = _k_get_function_parameter_float(env, var->name, integer_count + float_count);
+
+                if (is_float) {
+                    _k_assemble_parameter_load(env, float_count, _k_get_function_parameter_size(env, var->name, float_count), is_float);
+                    float_count++;
+                } else {
+                    _k_assemble_parameter_load(env, integer_count, _k_get_function_parameter_size(env, var->name, integer_count), is_float);
+                    integer_count++;
+                }
 
                 if (env->cur_type == _K_TOKEN_TYPE_SEPARATOR) {
                     _k_advance_token(env);
@@ -547,7 +606,6 @@ k_build_error_t _k_compile_operator(k_env_t *env, node_t *root, long tier) {
             env->runtime->running_type = old;
 
             _k_assemble_load_rcx(env);
-            _k_assemble_swap_rax_rcx(env);
         }
 
         _k_compile_operator_select(env, root);
@@ -575,6 +633,10 @@ k_build_error_t _k_skip_to_operator(k_env_t *env) {
         if (env->cur_type == _K_TOKEN_TYPE_NEWEXPRESSION) {
             while (env->cur_type != _K_TOKEN_TYPE_ENDEXPRESSION) {
                 _k_advance_token(env);
+
+                if (env->cur_type == _K_TOKEN_TYPE_NEWEXPRESSION) {
+                    _k_skip_to_operator(env);
+                }
             }
 
             _k_advance_token(env);
@@ -592,6 +654,10 @@ k_build_error_t _k_skip_to_operator(k_env_t *env) {
     else if (env->cur_type == _K_TOKEN_TYPE_NEWEXPRESSION) {
         while (env->cur_type != _K_TOKEN_TYPE_ENDEXPRESSION) {
             _k_advance_token(env);
+
+            if (env->cur_type == _K_TOKEN_TYPE_NEWEXPRESSION) {
+                _k_skip_to_operator(env);
+            }
         }
 
         _k_advance_token(env);
@@ -755,10 +821,6 @@ k_build_error_t _k_compile_expression(k_env_t *env) {
     char old_typed = env->runtime->typed;
 
     env->runtime->typed = 0;
-
-    printf("\n");
-    _k_display_tree(root, 0);
-    printf("\n");
 
     _k_compile_operator(env, root, root->id == 1 ? _k_get_hierarchy(*(_k_op_type_e *)root->data) : 0);
 
@@ -1067,11 +1129,23 @@ k_build_error_t _k_compile_function_declaration(k_env_t *env) {
     _k_assemble_prelude(env);
 
     unsigned long old = env->runtime->size;
+    unsigned long int_count   = 0;
+    unsigned long float_count = 0;
 
     for (unsigned long i = 0; i < env->runtime->local_count; i++) {
         _k_variable_t *param = &env->runtime->locals[i];
 
-        _k_assemble_parameter_store(env, param->offset, i, param->size, param->flags & _K_VARIABLE_FLAG_FLOAT);
+        char is_float = param->flags & _K_VARIABLE_FLAG_FLOAT;
+
+        if (is_float) {
+            _k_assemble_parameter_store(env, param->offset, float_count, param->size, is_float);
+            float_count++;
+        }
+
+        else {
+            _k_assemble_parameter_store(env, param->offset, int_count, param->size, is_float);
+            int_count++;
+        }
     }
 
     _K_COMPILE_STMT(env);
