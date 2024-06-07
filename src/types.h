@@ -178,6 +178,7 @@ typedef enum {
     K_ERROR_EXPECTED_ASSIGNMENT,
     K_ERROR_EXPECTED_CONSTANT,
     K_ERROR_UNALLOWED_FLOAT,
+    K_ERROR_NULL_PTR,
 } k_build_error_t;
 
 typedef struct {

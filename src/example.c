@@ -54,20 +54,20 @@ int main() {
     free(source);
 
     float cos = 3.0;
-    k_call_function(env, "cos", &cos, 1, *(unsigned long*)&cos);
+    k_call_function(env, "cos", (void **)&cos, 1, (void*)*(unsigned long*)&cos);
     
     float sin = 4.0;
-    k_call_function(env, "sin", &sin, 1, *(unsigned long*)&sin);
+    k_call_function(env, "sin", (void **)&sin, 1, (void*)*(unsigned long*)&sin);
 
     float log = 5.0;
-    k_call_function(env, "log", &log, 1, *(unsigned long*)&log);
+    k_call_function(env, "log", (void **)&log, 1, (void*)*(unsigned long*)&log);
 
     float exp = 6.0;
-    k_call_function(env, "exp", &exp, 1, *(unsigned long*)&exp);
+    k_call_function(env, "exp", (void **)&exp, 1, (void*)*(unsigned long*)&exp);
 
     float pow_base = 2.0;
     float pow_exp  = 0.5;
-    k_call_function(env, "pow", &pow_base, 2, *(unsigned long*)&pow_base, *(unsigned long*)&pow_exp);
+    k_call_function(env, "pow", (void **)&pow_base, 2, (void*)*(unsigned long*)&pow_base, (void*)*(unsigned long*)&pow_exp);
 
     printf("cos(3.0) = %f\n", cos);
     printf("sin(4.0) = %f\n", sin);

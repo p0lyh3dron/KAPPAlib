@@ -14,6 +14,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 
 #include "builtin.h"
 #include "util.h"
@@ -63,7 +64,7 @@ void k_set_log_handler(k_env_t *env, int (*log)(const char *msg)) {
  */
 k_build_error_t k_build(k_env_t *env, const char *source) {
     if (env == (k_env_t*)0x0 || source == (const char*)0x0)
-        return;
+        return K_ERROR_NULL_PTR;
 
     if (env->lexer != (_k_lexer_t*)0x0)
         free(env->lexer);
@@ -71,7 +72,7 @@ k_build_error_t k_build(k_env_t *env, const char *source) {
     env->lexer = malloc(sizeof(_k_lexer_t));
 
     if (env->lexer == (_k_lexer_t*)0x0)
-        return;
+        return K_ERROR_NULL_PTR;
 
     env->lexer->tokens = (_k_token_t*)0x0;
     env->lexer->token_count = 0;
@@ -80,6 +81,7 @@ k_build_error_t k_build(k_env_t *env, const char *source) {
     env->lexer->column = 0;
 
     _k_lexical_analysis(env, source);
+
     return _k_compile(env, source);
 }
 

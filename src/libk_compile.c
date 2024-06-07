@@ -356,7 +356,7 @@ k_build_error_t _k_compile_identifier(k_env_t *env) {
                 }
             }
 
-            _k_assemble_call(env, _k_get_function(env, var->name));
+            _k_assemble_call(env, (unsigned long)_k_get_function(env, var->name));
             _k_assemble_load_rcx(env);
         }
 
@@ -1062,7 +1062,7 @@ k_build_error_t _k_prepare_function_compile(k_env_t *env, char *id) {
     env->cur_function = &env->runtime->function_table[env->runtime->function_count++];
 
     env->cur_function->name   = id;
-    env->cur_function->source = env->runtime->size;
+    env->cur_function->source = (char *)env->runtime->size;
     env->cur_function->size   = 0;
 
     env->cur_function->parameters      = (_k_variable_t *)0x0;
@@ -1156,7 +1156,7 @@ k_build_error_t _k_compile_function_declaration(k_env_t *env) {
         free(env->runtime->locals);
     }
 
-    env->runtime->locals      = (_k_function_t *)0x0;
+    env->runtime->locals      = (_k_variable_t *)0x0;
     env->runtime->local_count = 0;
 
     _local_offset = 0;
