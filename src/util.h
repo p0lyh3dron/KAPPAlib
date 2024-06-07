@@ -16,6 +16,8 @@
 #define MIN(x, y)     ((x) < (y) ? (x) : (y))
 #define XOR(x, y)     ((x) && !(y) || !(x) && (y))
 
+#include "libk.h"
+
 /*
  *    Returns the current error.
  *

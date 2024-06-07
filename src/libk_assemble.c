@@ -350,20 +350,25 @@ void _k_assemble_move_ptr(k_env_t *env) {
     /*
      *    48 89 01    mov [rcx], rax
      */
-    const char *move = (const char *)0x0;
+    const char   *move = (const char *)0x0;
+    unsigned long size;
 
     if (env->runtime->current_type.is_float == 0) {
-        if (env->runtime->current_type.size == 8)           move = "\x48\x89\x01";
-        else if (env->runtime->current_type.size == 4)      move = "\x89\x01";
-        else if (env->runtime->current_type.size == 2)      move = "\x66\x89\x01";
-        else                                                move = "\x88\x01";
+        if (env->runtime->current_type.size == 8)           move = "\x48\x89\x08";
+        else if (env->runtime->current_type.size == 4)      move = "\x89\x08";
+        else if (env->runtime->current_type.size == 2)      move = "\x66\x89\x08";
+        else                                                move = "\x88\x08";
+
+        size = strlen(move);
     }
     else {
-        if (env->runtime->current_type.size == 8)           move = "\xF2\x0F\x11\x01";
-        else if (env->runtime->current_type.size == 4)      move = "\xF3\x0F\x11\x01";
+        if (env->runtime->current_type.size == 8)           move = "\xF2\x0F\x11\x00";
+        else if (env->runtime->current_type.size == 4)      move = "\xF3\x0F\x11\x00";
+
+        size = 4;
     }
 
-    _k_append_bytecode(env, (char *)move, strlen(move));
+    _k_append_bytecode(env, (char *)move, size);
 }
 
 /*
