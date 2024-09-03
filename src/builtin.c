@@ -9,8 +9,6 @@
  */
 #include "builtin.h"
 
-#include "util.h"
-
 const _k_tokenable_t _tokenables[] = {
     {_K_TOKEN_TYPE_UNKNOWN,       (const char*)0x0,                                                   _K_TOKEN_TERMINATABLE_UNKNOWN},
     {_K_TOKEN_TYPE_EOF,           "\0",                                                               _K_TOKEN_TERMINATABLE_SINGLE},
@@ -43,18 +41,3 @@ const char *_keywords[] = {
 };
 
 unsigned long _keywords_length = 5;
-
-const _k_type_t _types[] = {
-    {"s8",  1, 0},
-    {"s16", 2, 0},
-    {"s32", 4, 0},
-    {"s64", 8, 0},
-    {"u8",  1, 0},
-    {"u16", 2, 0},
-    {"u32", 4, 0},
-    {"u64", 8, 0},
-    {"f32", 4, 1},
-    {"f64", 8, 1},
-};
-
-unsigned long _types_length = 10;

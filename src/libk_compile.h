@@ -20,6 +20,6 @@
  * 
  *    @return k_build_error_t    The error code.
  */
-k_build_error_t _k_compile(k_env_t *env, const char *source);
+char *_k_compile(_k_token_t *tokens);
 
 #endif /* _LIBK_COMPILE_H  */

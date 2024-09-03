@@ -15,16 +15,11 @@
 #include <string.h>
 #include <sys/mman.h>
 
-#include "tree.h"
-
 #include "builtin.h"
-#include "util.h"
 
-#include "libk_assemble.h"
-#include "libk_operator.h"
 #include "libk_parse.h"
 
-k_build_error_t _err = K_ERROR_NONE;
+int _k_build_error = 0;
 
 char _k_get_prec(char *op) {
     if (strcmp(op, ",") == 0)  return 1;
@@ -38,236 +33,17 @@ char _k_get_prec(char *op) {
     return 0;
 }
 
-int _k_compile_bin_op(_k_token_t *token, int *r) {
-    if (strcmp(token->str, "<") == 0)  { printf("\tlesrr: r%d r%d r%d\n", *r - 1, *r - 1, *r); --*r; return 0; }
-    if (strcmp(token->str, ">") == 0)  { printf("\tgrerr: r%d r%d r%d\n", *r - 1, *r - 1, *r); --*r; return 0; }
-    if (strcmp(token->str, "<=") == 0) { printf("\tleqrr: r%d r%d r%d\n", *r - 1, *r - 1, *r); --*r; return 0; }
-    if (strcmp(token->str, ">=") == 0) { printf("\tgeqrr: r%d r%d r%d\n", *r - 1, *r - 1, *r); --*r; return 0; }
-    if (strcmp(token->str, "==") == 0) { printf("\tequrr: r%d r%d r%d\n", *r - 1, *r - 1, *r); --*r; return 0; }
-    if (strcmp(token->str, "+") == 0)  { printf("\taddrr: r%d r%d r%d\n", *r - 1, *r - 1, *r); --*r; return 0; }
-    if (strcmp(token->str, "-") == 0)  { printf("\tsubrr: r%d r%d r%d\n", *r - 1, *r - 1, *r); --*r; return 0; }
-    if (strcmp(token->str, "*") == 0)  { printf("\tmulrr: r%d r%d r%d\n", *r - 1, *r - 1, *r); --*r; return 0; }
-    if (strcmp(token->str, "/") == 0)  { printf("\tdivrr: r%d r%d r%d\n", *r - 1, *r - 1, *r); --*r; return 0; }
-    if (strcmp(token->str, ",") == 0)  { printf("\tpushr: r%d\n", *r); --*r; return 0; }
-
-    return 0;
-}
-
-int _k_graph_edge(_k_token_t *it, _k_token_t *ft, _k_token_type_e itt, _k_token_type_e ftt) {
-    return it->tokenable->type == itt && ft->tokenable->type == ftt;
-}
-
-_k_token_t *_k_expression(k_env_t *env, _k_token_t *token) {
-    _k_token_t      stack[1024] = {0};
-    _k_token_t     *stackp      = stack;
-    int             last        = -1;
-    int             r           = -1;
-    int             line        = -1;
-
-    do {
-        if (stackp > stack) last = (stackp-1)->index;
-        /* Expression graph edges, and their associated operations.  */
-
-        /* Declarator -> Identifier.  */
-        if (_k_graph_edge(stackp - 2, stackp - 1, _K_TOKEN_TYPE_DECLARATOR, _K_TOKEN_TYPE_IDENTIFIER)) {
-            if (_k_graph_edge(stackp - 1, token, _K_TOKEN_TYPE_IDENTIFIER, _K_TOKEN_TYPE_NEWEXPRESSION)) {
-                if ((stackp - 3)->tokenable->type != _K_TOKEN_TYPE_IDENTIFIER) return (_k_token_t*)0x0;
-
-                printf("%s: \n", (stackp-1)->str);
-
-                /* Pop the declarator and identifier off the stack.  */
-                stackp -= 3;
-
-                continue;
-            }
-
-            else {
-                /* Error if token preceding declarator is not an identifier.  */
-                if ((stackp - 3)->tokenable->type != _K_TOKEN_TYPE_IDENTIFIER) return (_k_token_t*)0x0;
-
-                printf("\tnewsv: %s %s\n", (stackp-3)->str, (stackp-1)->str);
-
-                /* Remove the top two elements of stack, and push identifier back on.  */
-                *(stackp-3) = *(stackp-1);
-
-                stackp -= 2;
-            }
-        }
-
-        /* Identifier -> ).  */
-        /* Identifier -> Operator.  */
-        /* Identifier -> ,.  */
-        else if (_k_graph_edge(stackp - 1, token, _K_TOKEN_TYPE_IDENTIFIER, _K_TOKEN_TYPE_ENDEXPRESSION) ||
-                 _k_graph_edge(stackp - 1, token, _K_TOKEN_TYPE_IDENTIFIER, _K_TOKEN_TYPE_OPERATOR)      ||
-                 _k_graph_edge(stackp - 1, token, _K_TOKEN_TYPE_IDENTIFIER, _K_TOKEN_TYPE_SEPARATOR)) {
-            printf("\tloadr: r%d, %s\n", ++r, (stackp-1)->str);
-
-            --stackp;
-        }
-
-        /* Number -> ).  */
-        /* Number -> Operator.  */
-        /* Number -> ,.  */
-        else if (_k_graph_edge(stackp - 1, token, _K_TOKEN_TYPE_NUMBER, _K_TOKEN_TYPE_ENDEXPRESSION) ||
-                 _k_graph_edge(stackp - 1, token, _K_TOKEN_TYPE_NUMBER, _K_TOKEN_TYPE_OPERATOR)      ||
-                 _k_graph_edge(stackp - 1, token, _K_TOKEN_TYPE_NUMBER, _K_TOKEN_TYPE_SEPARATOR)) {
-            printf("\tmovrn: r%d, %s\n", ++r, (stackp-1)->str);
-
-            --stackp;
-        }
-
-        /* Standalone states.  */
-
-        /* End of nested expression.  */
-        if (token->tokenable->type == _K_TOKEN_TYPE_ENDEXPRESSION) {
-            /* Pop operators off the stack.  */
-            while (stackp > stack && (--stackp)->tokenable->type != _K_TOKEN_TYPE_NEWEXPRESSION) {
-                stackp -= _k_compile_bin_op(stackp, &r);
-            }
-
-            /* Mismatched parenteses.  */
-            if (stackp < stack) return (_k_token_t *)0x0;
-
-            /* Delayed check of graph edge for Identifier -> (.  */
-            if (_k_graph_edge(stackp - 1, stackp, _K_TOKEN_TYPE_IDENTIFIER, _K_TOKEN_TYPE_NEWEXPRESSION)) {
-                /* Push an argument if we didnt void out the call.  */
-                if (!_k_graph_edge(token - 1, token, _K_TOKEN_TYPE_NEWEXPRESSION, _K_TOKEN_TYPE_ENDEXPRESSION)) {
-                    printf("\tpushr: r%d\n", r--);
-                }
-
-                /* Call the function and pop the function name off.  */
-                printf("\tcallf: %s\n", (--stackp)->str);
-
-                /* Return register into working stack.  */
-                printf("\tmovrr: r%d, rr\n", ++r);
-            }
-        }
-
-        /* Operations.  */
-        if (token->tokenable->type == _K_TOKEN_TYPE_OPERATOR || 
-            token->tokenable->type == _K_TOKEN_TYPE_SEPARATOR) {
-            /* Pop precedent operators off stack.  */
-            while (stackp > stack && _k_get_prec(token->str) <= _k_get_prec((stackp-1)->str)) {
-                stackp -= _k_compile_bin_op(--stackp, &r);
-            }
-        }
-
-        /* Cases in which we add the token to the stack.  */
-        if      (token->tokenable->type == _K_TOKEN_TYPE_IDENTIFIER)    *stackp++ = *token;
-        else if (token->tokenable->type == _K_TOKEN_TYPE_NUMBER)        *stackp++ = *token;
-        else if (token->tokenable->type == _K_TOKEN_TYPE_NEWEXPRESSION) *stackp++ = *token;
-        else if (token->tokenable->type == _K_TOKEN_TYPE_ASSIGNMENT)    *stackp++ = *token;
-        else if (token->tokenable->type == _K_TOKEN_TYPE_DECLARATOR)    *stackp++ = *token;
-        else if (token->tokenable->type == _K_TOKEN_TYPE_OPERATOR)      *stackp++ = *token;
-        else if (token->tokenable->type == _K_TOKEN_TYPE_SEPARATOR)     *stackp++ = *token;
-    } while (last != (stackp-1)->index && token++);
-
-    if (stackp > stack && (stackp-1)->tokenable->type == _K_TOKEN_TYPE_IDENTIFIER) {
-        printf("\tloadr: r%d, %s\n", ++r, (stackp-1)->str);
-
-        stackp--;
-    }
-
-    if (stackp > stack && (stackp-1)->tokenable->type == _K_TOKEN_TYPE_NUMBER) {
-        printf("\tmovrn: r%d, %s\n", ++r, (stackp-1)->str);
-
-        stackp--;
-    }
-
-    do {
-        stackp -= _k_compile_bin_op(--stackp, &r);
-    } while (stackp >= stack);
-
-    return token;
-}
-
-_k_token_t *_k_statement(k_env_t *env, _k_token_t *token) {
-    _k_token_t  stack[1024];
-    _k_token_t *stackp = stack;
-    int         s      = 0;
-
-    do {
-        if (token->tokenable->type == _K_TOKEN_TYPE_KEYWORD) {
-            if (strcmp(token->str, "return") == 0) {
-                token = _k_expression(env, ++token);
-
-                printf("\tmovrr: rr, r0\n\tleave:\n");
-
-                if (strcmp((stackp - 1)->str, "if") == 0) {
-                    printf("S%d: \n", s++);
-
-                    stackp--;
-                }
-
-                if (strcmp((stackp - 1)->str, "while") == 0) {
-                    printf("\tjmpal: S%d\nS%d: \n", s - 2, s++);
-
-                    stackp--;
-                }
-            }
-
-            else if (strcmp(token->str, "if") == 0) {
-                *stackp++ = *token;
-
-                token = _k_expression(env, ++token);
-
-                printf("\tcmprd: r0, 0\n\tjmpeq: S%d\n", s);
-
-                if (strcmp(token->str, "do") != 0) return (_k_token_t *)0x0;
-            }
-
-            else if (strcmp(token->str, "while") == 0) {
-                *stackp++ = *token;
-
-                printf("S%d: \n", s++);
-
-                token = _k_expression(env, ++token);
-
-                printf("\tcmprd: r0, 0\n\tjmpeq: S%d\n", s);
-
-                if (strcmp(token->str, "do") != 0) return (_k_token_t *)0x0;
-            }
-        }
-
-        else if (token->tokenable->type == _K_TOKEN_TYPE_NEWSTATEMENT) {
-            *stackp++ = *token;
-        }
-
-        else if (token->tokenable->type == _K_TOKEN_TYPE_ENDSTATEMENT) {
-            if (stackp == stack) return token;
-
-            if (strcmp((stackp - 2)->str, "if") == 0) {
-                printf("S%d: \n", s++);
-
-                stackp -= 2;
-            }
-
-            if (strcmp((stackp - 2)->str, "while") == 0) {
-                printf("\tjmpal: S%d\nS%d: \n", s - 2, s++);
-
-                stackp -= 2;
-            }
-        }
-
-        /* Expression.  */
-        else {
-            token = _k_expression(env, token);
-
-            if (strcmp((stackp - 1)->str, "if") == 0) {
-                printf("S%d: \n", s++);
-
-                stackp--;
-            }
-
-            if (strcmp((stackp - 1)->str, "while") == 0) {
-                printf("\tjmpal: S%d\nS%d: \n", s - 2, s++);
-
-                stackp--;
-            }
-        }
-    } while (stackp > stack);
-
-    return token;
+void _k_compile_bin_op(_k_token_t *token, int *r, FILE *out) {
+    if (strcmp(token->str, "<") == 0)  { fprintf(out, "\tlesrr: r%d r%d r%d\n", *r - 1, *r - 1, *r); --*r; }
+    if (strcmp(token->str, ">") == 0)  { fprintf(out, "\tgrerr: r%d r%d r%d\n", *r - 1, *r - 1, *r); --*r; }
+    if (strcmp(token->str, "<=") == 0) { fprintf(out, "\tleqrr: r%d r%d r%d\n", *r - 1, *r - 1, *r); --*r; }
+    if (strcmp(token->str, ">=") == 0) { fprintf(out, "\tgeqrr: r%d r%d r%d\n", *r - 1, *r - 1, *r); --*r; }
+    if (strcmp(token->str, "==") == 0) { fprintf(out, "\tequrr: r%d r%d r%d\n", *r - 1, *r - 1, *r); --*r; }
+    if (strcmp(token->str, "+") == 0)  { fprintf(out, "\taddrr: r%d r%d r%d\n", *r - 1, *r - 1, *r); --*r; }
+    if (strcmp(token->str, "-") == 0)  { fprintf(out, "\tsubrr: r%d r%d r%d\n", *r - 1, *r - 1, *r); --*r; }
+    if (strcmp(token->str, "*") == 0)  { fprintf(out, "\tmulrr: r%d r%d r%d\n", *r - 1, *r - 1, *r); --*r; }
+    if (strcmp(token->str, "/") == 0)  { fprintf(out, "\tdivrr: r%d r%d r%d\n", *r - 1, *r - 1, *r); --*r; }
+    if (strcmp(token->str, ",") == 0)  { fprintf(out, "\tpushr: r%d\n", *r); --*r; }
 }
 
 typedef struct _k_tree_s {
@@ -363,7 +139,7 @@ void _k_free_tree(_k_tree_t *root) {
  *    @param k_env_t    *env       The environment to compile the tree in.
  *    @param _k_tree_t *root       The root of the tree.
  */
-void _k_compile_tree(k_env_t *env, _k_tree_t *root, int *r, int *s) {
+void _k_compile_tree(_k_tree_t *root, int *r, int *s, FILE *out) {
     if (root == (_k_tree_t*)0x0) return;
 
     switch (root->token->tokenable->type) {
@@ -373,19 +149,19 @@ void _k_compile_tree(k_env_t *env, _k_tree_t *root, int *r, int *s) {
             if (root->children[1]->child_count > 0 && root->children[1]->children[0]->token->tokenable->type == _K_TOKEN_TYPE_NEWEXPRESSION) {
                 char *name = root->children[1]->token->str;
 
-                printf("\n%s: \n", name);
+                fprintf(out, "\n%s: \n", name);
 
                 for (unsigned long i = 0; i < root->children[1]->children[0]->child_count; i++) {
-                    printf("\tpoprr: r%d\n", ++*r);
+                    fprintf(out, "\tpoprr: r%d\n", ++*r);
                 }
 
                 for (unsigned long i = 0; i < root->children[1]->children[0]->child_count; i++) {
-                    _k_compile_tree(env, root->children[1]->children[0]->children[i], r, s);
-                    printf("\tsaver: %s r%d\n", root->children[1]->children[0]->children[i]->children[1]->token->str, (*r)--);
+                    _k_compile_tree(root->children[1]->children[0]->children[i], r, s, out);
+                    fprintf(out, "\tsaver: %s r%d\n", root->children[1]->children[0]->children[i]->children[1]->token->str, (*r)--);
                 }
 
                 for (unsigned long i = 0; i < root->children[1]->children[1]->child_count; i++) {
-                    _k_compile_tree(env, root->children[1]->children[1]->children[i], r, s);
+                    _k_compile_tree(root->children[1]->children[1]->children[i], r, s, out);
                 }
 
                 break;
@@ -394,7 +170,7 @@ void _k_compile_tree(k_env_t *env, _k_tree_t *root, int *r, int *s) {
             if (root->child_count > 1 && root->children[1]->token->tokenable->type == _K_TOKEN_TYPE_IDENTIFIER) {
                 char *name = root->children[1]->token->str;
 
-                printf("\tnewsv: %s %s\n", type, name);
+                fprintf(out, "\tnewsv: %s %s\n", type, name);
 
                 break;
             }
@@ -402,9 +178,9 @@ void _k_compile_tree(k_env_t *env, _k_tree_t *root, int *r, int *s) {
             if (root->child_count > 1 && (root->children[1]->token->tokenable->type == _K_TOKEN_TYPE_OPERATOR || root->children[1]->token->tokenable->type == _K_TOKEN_TYPE_ASSIGNMENT)) {
                 char *name = root->children[1]->children[0]->token->str;
 
-                printf("\tnewsv: %s %s\n", type, name);
+                fprintf(out, "\tnewsv: %s %s\n", type, name);
 
-                _k_compile_tree(env, root->children[1], r, s);
+                _k_compile_tree(root->children[1], r, s, out);
 
                 break;
             }
@@ -415,46 +191,46 @@ void _k_compile_tree(k_env_t *env, _k_tree_t *root, int *r, int *s) {
         case _K_TOKEN_TYPE_IDENTIFIER: {
             if (root->child_count > 0 && root->children[0]->token->tokenable->type == _K_TOKEN_TYPE_NEWEXPRESSION) {
                 for (unsigned long i = 0; i < root->children[0]->child_count; i++) {
-                    _k_compile_tree(env, root->children[0]->children[i], r, s);
-                    printf("\tpushr: r%d\n", (*r)--);
+                    _k_compile_tree(root->children[0]->children[i], r, s, out);
+                    fprintf(out, "\tpushr: r%d\n", (*r)--);
                 }
 
-                printf("\tcallf: %s\n", root->token->str);
-                printf("\tmovrr: r%d r0\n", ++*r);
+                fprintf(out, "\tcallf: %s\n", root->token->str);
+                fprintf(out, "\tmovrr: r%d r0\n", ++*r);
 
                 break;
             }
 
-            printf("\tloadr: r%d %s\n", ++*r, root->token->str);
+            fprintf(out, "\tloadr: r%d %s\n", ++*r, root->token->str);
 
             break;
         }
 
         case _K_TOKEN_TYPE_NUMBER: {
-            printf("\tmovrn: r%d %s\n", ++*r, root->token->str);
+            fprintf(out, "\tmovrn: r%d %s\n", ++*r, root->token->str);
 
             break;
         }
 
         case _K_TOKEN_TYPE_ASSIGNMENT: {
-            _k_compile_tree(env, root->children[1], r, s);
+            _k_compile_tree(root->children[1], r, s, out);
 
-            printf("\tsaver: %s r%d\n", root->children[0]->token->str, (*r)--);
+            fprintf(out, "\tsaver: %s r%d\n", root->children[0]->token->str, (*r)--);
 
             break;
         }
 
         case _K_TOKEN_TYPE_OPERATOR: {
-            _k_compile_tree(env, root->children[0], r, s);
-            _k_compile_tree(env, root->children[1], r, s);
-            _k_compile_bin_op(root->token, r);
+            _k_compile_tree(root->children[0], r, s, out);
+            _k_compile_tree(root->children[1], r, s, out);
+            _k_compile_bin_op(root->token, r, out);
 
             break;
         }
 
         case _K_TOKEN_TYPE_NEWEXPRESSION: {
             for (unsigned long i = 0; i < root->child_count; i++) {
-                _k_compile_tree(env, root->children[i], r, s);
+                _k_compile_tree(root->children[i], r, s, out);
             }
 
             break;
@@ -462,7 +238,7 @@ void _k_compile_tree(k_env_t *env, _k_tree_t *root, int *r, int *s) {
 
         case _K_TOKEN_TYPE_NEWSTATEMENT: {
             for (unsigned long i = 0; i < root->child_count; i++) {
-                _k_compile_tree(env, root->children[i], r, s);
+                _k_compile_tree(root->children[i], r, s, out);
             }
 
             break;
@@ -470,35 +246,35 @@ void _k_compile_tree(k_env_t *env, _k_tree_t *root, int *r, int *s) {
 
         case _K_TOKEN_TYPE_KEYWORD: {
             if (strcmp(root->token->str, "return") == 0) {
-                _k_compile_tree(env, root->children[0], r, s);
+                _k_compile_tree(root->children[0], r, s, out);
 
-                printf("\tmovrr: r0 r%d\n\tleave: \n", (*r)--);
+                fprintf(out, "\tmovrr: r0 r%d\n\tleave: \n", (*r)--);
 
                 break;
             }
 
             if (strcmp(root->token->str, "if") == 0) {
-                _k_compile_tree(env, root->children[0], r, s);
+                _k_compile_tree(root->children[0], r, s, out);
 
-                printf("\tcmprd: r%d 0\n\tjmpeq: S%d\n", (*r)--, ++*s);
+                fprintf(out, "\tcmprd: r%d 0\n\tjmpeq: S%d\n", (*r)--, ++*s, out);
 
-                _k_compile_tree(env, root->children[1], r, s);
+                _k_compile_tree(root->children[1], r, s, out);
 
-                printf("S%d: \n", *s);
+                fprintf(out, "S%d: \n", *s, out);
 
                 break;
             }
 
             if (strcmp(root->token->str, "while") == 0) {
-                printf("S%d: \n", ++*s);
+                fprintf(out, "S%d: \n", ++*s, out);
 
-                _k_compile_tree(env, root->children[0], r, s);
+                _k_compile_tree(root->children[0], r, s, out);
 
-                printf("\tcmprd: r%d 0\n\tjmpeq: S%d\n", (*r)--, ++*s);
+                fprintf(out, "\tcmprd: r%d 0\n\tjmpeq: S%d\n", (*r)--, ++*s, out);
 
-                _k_compile_tree(env, root->children[1], r, s);
+                _k_compile_tree(root->children[1], r, s, out);
 
-                printf("\tjmpal: S%d\nS%d: \n", *s - 1, *s);
+                fprintf(out, "\tjmpal: S%d\nS%d: \n", *s - 1, *s, out);
 
                 break;
             }
@@ -518,9 +294,8 @@ void _k_compile_tree(k_env_t *env, _k_tree_t *root, int *r, int *s) {
  *
  *    @return k_build_error_t    The error code.
  */
-k_build_error_t _k_tree(k_env_t *env, const char *source, _k_token_t *token) {
-    _k_tree_t *roots = (_k_tree_t*)0x0;
-    _k_tree_t *root  = roots;
+void _k_tree(_k_token_t *token, FILE *out) {
+    _k_tree_t *root = (_k_tree_t*)0x0;
     _k_tree_t *node  = (_k_tree_t*)0x0;
     int        s     = -1;
 
@@ -606,7 +381,7 @@ k_build_error_t _k_tree(k_env_t *env, const char *source, _k_token_t *token) {
                 if (node->parent == (_k_tree_t*)0x0) {
                     int r = 0;
 
-                    _k_compile_tree(env, root, &r, &s);
+                    _k_compile_tree(root, &r, &s, out);
 
                     //_k_free_tree(root);
 
@@ -659,27 +434,16 @@ k_build_error_t _k_tree(k_env_t *env, const char *source, _k_token_t *token) {
  * 
  *    @return k_build_error_t    The error code.
  */
-k_build_error_t _k_compile(k_env_t *env, const char *source) {
-    _k_create_runtime(env, source);
+char *_k_compile(_k_token_t *tokens) {
+    char   *out;
+    size_t  size;
+    FILE   *f = open_memstream(&out, &size);
 
-    _k_token_t *token = &env->lexer->tokens[0];
+    _k_tree(tokens, f);
 
-    //for (unsigned long i = 0; i < env->lexer->token_count; i++) printf("[%d]: %s\n", i, env->lexer->tokens[i].str);
+    fclose(f);
 
-#if 0
-    for (_k_token_t *token       = &env->lexer->tokens[0]; 
-         token->tokenable->type != _K_TOKEN_TYPE_EOF; 
-         token                   = _k_expression(env, token) + 1) {
-    }
-#endif
+    free(tokens);
 
-    _k_tree(env, source, token + 0);
-
-    if (env->kasm != (char*)0x0) {
-        printf("%s", env->kasm);
-
-        free(env->kasm);
-    }
-
-    return _err;
+    return out;
 }
