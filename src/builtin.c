@@ -29,18 +29,20 @@ const _k_tokenable_t _tokenables[] = {
     {_K_TOKEN_TYPE_KEYWORD,       (const char*)0x0,                                                   _K_TOKEN_TERMINATABLE_UNKNOWN},
     {_K_TOKEN_TYPE_ENDLINE,       ";",                                                                _K_TOKEN_TERMINATABLE_SINGLE},
     {_K_TOKEN_TYPE_SEPARATOR,     ",",                                                                _K_TOKEN_TERMINATABLE_SINGLE},
+    {_K_TOKEN_TYPE_ASSIGNMENT,    (const char*)0x0,                                                   _K_TOKEN_TERMINATABLE_UNKNOWN},
 };
 
-unsigned long _tokenables_length = 17;
+unsigned long _tokenables_length = 18;
 
 const char *_keywords[] = {
     "if",
     "else",
     "while",
     "return",
+    "do",
 };
 
-unsigned long _keywords_length = 4;
+unsigned long _keywords_length = 5;
 
 const _k_type_t _types[] = {
     {"s8",  1, 0},

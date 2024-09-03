@@ -79,6 +79,36 @@ char *_k_get_token_str(k_env_t *env) {
 }
 
 /*
+ *    Appends a string to a string.
+ *
+ *    @param char **str    The string to append to.
+ *    @param char *app    The string to append.
+ */
+void _k_append_str(char **str, char *app, ...) {
+    if (app == (char*)0x0)
+        return;
+
+    char buf[256];
+    va_list args;
+    
+    va_start(args, app);
+    vsprintf(buf, app, args);
+    va_end(args);
+
+    if (*str == (char*)0x0) {
+        *str = (char*)malloc(strlen(buf) + 1);
+        strcpy(*str, buf);
+
+        return;
+    }
+
+    *str = (char*)realloc(*str, strlen(*str) + strlen(buf) + 1);
+    strcat(*str, buf);
+
+    return;
+}
+
+/*
  *    Swaps the endianness of a 4-byte integer.
  *
  *    @param unsigned int *a    The integer.

@@ -37,6 +37,7 @@ k_env_t *k_new_env(void) {
     env->runtime   = (_k_runtime_t*)0x0;
     env->log       = (int (*)(const char*))0x0;
     env->cur_token = (_k_token_t*)0x0;
+    env->kasm      = (char*)0x0;
 
     return env;
 }

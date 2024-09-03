@@ -152,6 +152,7 @@ k_build_error_t _k_compile_ptr_assign(k_env_t* env, node_t *node) {
  *    @return k_build_error_t    The error code.
  */
 k_build_error_t _k_compile_assignment(k_env_t *env, node_t *node) {
+    #if 0
     _k_variable_t *var = _k_get_var(env, (*(_k_token_t**)node->left->data)->str);
 
     /* Assembly generated should put arithmetic register into local address. */
@@ -161,6 +162,7 @@ k_build_error_t _k_compile_assignment(k_env_t *env, node_t *node) {
     else _k_assemble_assignment(env, var->offset, var->size, var->flags & _K_VARIABLE_FLAG_FLOAT);
 
     return K_ERROR_NONE;
+    #endif
 }
 
 const _k_op_type_e _op_list[] = {

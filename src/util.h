@@ -50,6 +50,14 @@ const char *_k_get_warning(k_env_t *env, const char *msg, ...);
 char *_k_get_token_str(k_env_t *env);
 
 /*
+ *    Appends a string to a string.
+ *
+ *    @param char **str    The string to append to.
+ *    @param char *app    The string to append.
+ */
+void _k_append_str(char **str, char *app, ...);
+
+/*
  *    Swaps the endianness of a 4-byte integer.
  *
  *    @param unsigned int *a    The integer.

@@ -275,6 +275,12 @@ void _k_lexical_analysis(k_env_t *env, const char *source) {
             }
         }
 
+        if ((*tok)->type == _K_TOKEN_TYPE_OPERATOR) {
+            if (strcmp(env->lexer->tokens[i].str, "=") == 0) {
+                *tok = _k_get_tokenable(_K_TOKEN_TYPE_ASSIGNMENT);
+            }
+        }
+
         /* Remove comments from the token stream.  */
         if ((*tok)->type != _K_TOKEN_TYPE_COMMENT) {
             new_tokens = realloc(new_tokens, (new_token_count + 1) * sizeof(_k_token_t));

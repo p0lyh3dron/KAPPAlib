@@ -35,6 +35,8 @@ int main() {
     fread(source, fsize, 1, fp);
     fclose(fp);
 
+    source[fsize] = '\0';
+
     k_env_t *env = k_new_env();
 
     if (env == (k_env_t*)0x0) {
@@ -50,6 +52,8 @@ int main() {
         fprintf(stderr, "Failed to build example.k!\n");
         return 1;
     }
+
+    #if 0
 
     free(source);
 
@@ -74,6 +78,8 @@ int main() {
     printf("ln(5.0)  = %f\n", log);
     printf("exp(6.0) = %f\n", exp);
     printf("pow(2.0, 0.5) = %f\n", pow_base);
+
+    #endif
 
     k_destroy_env(env);
     

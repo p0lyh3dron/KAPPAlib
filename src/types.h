@@ -29,6 +29,9 @@ typedef enum {
     _K_TOKEN_TYPE_KEYWORD,
     _K_TOKEN_TYPE_ENDLINE,
     _K_TOKEN_TYPE_SEPARATOR,
+    _K_TOKEN_TYPE_START,
+    _K_TOKEN_TYPE_LITERAL,
+    _K_TOKEN_TYPE_ASSIGNMENT,
 } _k_token_type_e;
 
 typedef enum {
@@ -164,6 +167,7 @@ typedef struct {
     _k_token_type_e  cur_type;
     _k_function_t   *cur_function;
     int           (*log)(const char *msg);
+    char *kasm;
 } k_env_t;
 
 typedef enum {
