@@ -20,6 +20,13 @@
  * 
  *    @return k_build_error_t    The error code.
  */
-char *_k_compile(_k_token_t *tokens);
+char *_k_compile(_k_token_t *tokens, int flags);
+
+/*
+ *    Gets the error code.
+ *
+ *    @return int    The error code.
+ */
+int _k_get_error_code();
 
 #endif /* _LIBK_COMPILE_H  */

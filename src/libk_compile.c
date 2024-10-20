@@ -21,6 +21,15 @@
 
 int _k_build_error = 0;
 
+/*
+ *    Gets the error code.
+ *
+ *    @return int    The error code.
+ */
+int _k_get_error_code() {
+    return _k_build_error;
+}
+
 char _k_get_prec(char *op) {
     if (strcmp(op, ",") == 0)  return 1;
     if (strcmp(op, "=") == 0)  return 2;
@@ -44,6 +53,11 @@ void _k_compile_bin_op(_k_token_t *token, int *r, FILE *out) {
     if (strcmp(token->str, "*") == 0)  { fprintf(out, "\tmulrr: r%d r%d r%d\n", *r - 1, *r - 1, *r); --*r; }
     if (strcmp(token->str, "/") == 0)  { fprintf(out, "\tdivrr: r%d r%d r%d\n", *r - 1, *r - 1, *r); --*r; }
     if (strcmp(token->str, ",") == 0)  { fprintf(out, "\tpushr: r%d\n", *r); --*r; }
+}
+
+void _k_compile_un_op(_k_token_t *token, int *r, FILE *out) {
+    if (strcmp(token->str, "-") == 0) { fprintf(out, "\tnegrr: r%d r%d\n", *r, *r); }
+    if (strcmp(token->str, "*") == 0) { fprintf(out, "\tderef: r%d r%d\n", *r, *r); }
 }
 
 typedef struct _k_tree_s {
@@ -104,11 +118,26 @@ _k_tree_t *_k_place_child(_k_tree_t *root, _k_token_t *token) {
  *
  *    @param _k_tree_t *parent    The parent to swap.
  */
-void _k_swap_parent(_k_tree_t *parent) {
-    _k_token_t *temp = parent->children[0]->token;
+void _k_swap_parent(_k_tree_t *node) {
+    _k_tree_t *parent      = node->parent;
+    _k_tree_t *grandparent = parent->parent;
 
-    parent->children[0]->token = parent->token;
-    parent->token              = temp;
+    if (grandparent != (_k_tree_t*)0x0) {
+        for (unsigned long i = 0; i < grandparent->child_count; i++) {
+            if (grandparent->children[i] == parent) {
+                grandparent->children[i] = node;
+            }
+        }
+    }
+
+    parent->children[parent->child_count - 1] = (_k_tree_t*)0x0;
+    parent->child_count--;
+    parent->parent = node;
+
+    node->parent   = grandparent;
+    node->children = (_k_tree_t**)realloc(node->children, (node->child_count + 1) * sizeof(_k_tree_t*));
+
+    node->children[node->child_count++] = parent;
 }
 
 void _k_tree_print(_k_tree_t *root, int depth, _k_tree_t *bold) {
@@ -116,10 +145,10 @@ void _k_tree_print(_k_tree_t *root, int depth, _k_tree_t *bold) {
 
     if (root->child_count == 2) _k_tree_print(root->children[1], depth + 1, bold);
 
-    for (int i = 0; i < depth; i++) printf("    ");
-    if (root == bold) printf("\e[31m\033[1m");
-    printf("%s\n", root->token->str);
-    if (root == bold) printf("\e[0m\033[0m");
+    for (int i = 0; i < depth; i++) fprintf(stderr, "    ");
+    if (root == bold) fprintf(stderr, "\e[31m\033[1m");
+    fprintf(stderr, "%s\n", root->token->str);
+    if (root == bold) fprintf(stderr, "\e[0m\033[0m");
 
     if (root->child_count >= 1) _k_tree_print(root->children[0], depth + 1, bold);
 }
@@ -144,7 +173,16 @@ void _k_compile_tree(_k_tree_t *root, int *r, int *s, FILE *out) {
 
     switch (root->token->tokenable->type) {
         case _K_TOKEN_TYPE_DECLARATOR: {
-            char *type = root->children[0]->token->str;
+            char type[32];
+            memset(type, 0, 32);
+            _k_tree_t *node = root->children[0];
+
+            while (strcmp(node->token->str, "*") == 0) {
+                strcat(type, "*");
+                node = node->children[0];
+            }
+
+            strcat(type, node->token->str);
             
             if (root->children[1]->child_count > 0 && root->children[1]->children[0]->token->tokenable->type == _K_TOKEN_TYPE_NEWEXPRESSION) {
                 char *name = root->children[1]->token->str;
@@ -215,15 +253,42 @@ void _k_compile_tree(_k_tree_t *root, int *r, int *s, FILE *out) {
         case _K_TOKEN_TYPE_ASSIGNMENT: {
             _k_compile_tree(root->children[1], r, s, out);
 
+            _k_tree_t *temp = root->children[0];
+            int        count = 0;
+
+            while (strcmp(temp->token->str, "*") == 0) {
+                temp = temp->children[0];
+
+                count++;
+            }
+
+            if (count > 0) fprintf(out, "\tloadr: r%d %s\n", ++*r, temp->token->str);
+
+            for (int i = 0; i < count - 1; i++) {
+                fprintf(out, "\tderef: r%d r%d\n", *r, *r);
+            }
+
+            if (count > 0) { fprintf(out, "\tsavea: r%d r%d\n", *r, *r - 1); *r -= 2; break; }
+
             fprintf(out, "\tsaver: %s r%d\n", root->children[0]->token->str, (*r)--);
 
             break;
         }
 
         case _K_TOKEN_TYPE_OPERATOR: {
-            _k_compile_tree(root->children[0], r, s, out);
-            _k_compile_tree(root->children[1], r, s, out);
-            _k_compile_bin_op(root->token, r, out);
+            if (root->child_count > 1) {
+                _k_compile_tree(root->children[0], r, s, out);
+                _k_compile_tree(root->children[1], r, s, out);
+                _k_compile_bin_op(root->token, r, out);
+            } else {
+                if (strcmp(root->token->str, "&") == 0) {
+                    fprintf(out, "\trefsv: r%d %s\n", ++(*r), root->children[0]->token->str);
+
+                    break;
+                }
+                _k_compile_tree(root->children[0], r, s, out);
+                _k_compile_un_op(root->token, r, out);
+            }
 
             break;
         }
@@ -294,89 +359,82 @@ void _k_compile_tree(_k_tree_t *root, int *r, int *s, FILE *out) {
  *
  *    @return k_build_error_t    The error code.
  */
-void _k_tree(_k_token_t *token, FILE *out) {
+void _k_tree(_k_token_t *token, FILE *out, int flags) {
     _k_tree_t *root = (_k_tree_t*)0x0;
     _k_tree_t *node  = (_k_tree_t*)0x0;
     int        s     = -1;
 
+    int after_operator = 0;
+
     node = _k_place_token(&root, token++);
 
     do {
-        //printf("Token: %s\n", token->str);
-        //printf("----------\n");
-        //_k_tree_print(root, 0, node);
-        //printf("----------\n");
+        if (flags) {
+            fprintf(stderr, "Token: %s\n", token->str);
+            fprintf(stderr, "----------\n");
+            _k_tree_print(root, 0, node);
+            fprintf(stderr, "----------\n");
+        }
+
+        /* Re-root the tree if it gets swapped elsewhere.  */
+        while (root->parent != (_k_tree_t*)0x0) {
+            root = root->parent;
+        }
+
         switch (token->tokenable->type) {
             case _K_TOKEN_TYPE_IDENTIFIER:
             case _K_TOKEN_TYPE_NUMBER: {
-                if (node->token->tokenable->type == _K_TOKEN_TYPE_DECLARATOR) {
+                if (node != (_k_tree_t*)0x0 && 
+                   (node->token->tokenable->type == _K_TOKEN_TYPE_IDENTIFIER || node->token->tokenable->type == _K_TOKEN_TYPE_NUMBER)) {
+                    /* Literal after literal, doesn't make sense.  */
+                    _k_build_error = 1; return; 
+                }
+
+                if (node->token->tokenable->type == _K_TOKEN_TYPE_OPERATOR || node->token->tokenable->type == _K_TOKEN_TYPE_ASSIGNMENT) {
+                    /* Probably unary.  */
+
                     node = _k_place_child(node, token);
 
-                    break;
+                    while (node->parent != (_k_tree_t*)0x0 && node->parent->token->tokenable->type == _K_TOKEN_TYPE_OPERATOR && node->parent->child_count == 1) { node = node->parent; }
+
+                    after_operator = 0; break;
                 }
 
-                node = _k_place_child(node, token);
-
-                break;
+                node = _k_place_child(node, token); after_operator = 0; break; 
             }
-            case _K_TOKEN_TYPE_DECLARATOR: {
-                node = _k_place_child(node, token)->parent;
-
-                _k_swap_parent(node);
-
-                break;            
-            }
-            case _K_TOKEN_TYPE_NEWEXPRESSION: {
-                node = _k_place_child(node, token);
-
-                break;
-            
+            case _K_TOKEN_TYPE_NEWEXPRESSION: 
+            case _K_TOKEN_TYPE_NEWSTATEMENT: { 
+                node = _k_place_child(node, token); after_operator = 1; break;
             }
             case _K_TOKEN_TYPE_ENDEXPRESSION: {
-                while (node->token->tokenable->type != _K_TOKEN_TYPE_NEWEXPRESSION) {
-                    node = node->parent;
-                }
-
+                while (node->token->tokenable->type != _K_TOKEN_TYPE_NEWEXPRESSION) { node = node->parent; }
                 /* Arguments.  */
-                if (node->parent->token->tokenable->type == _K_TOKEN_TYPE_IDENTIFIER) {
-                    node = node->parent;
-                }
+                if (node->parent->token->tokenable->type == _K_TOKEN_TYPE_IDENTIFIER) { node = node->parent; }
 
                 break;
             }
-            case _K_TOKEN_TYPE_NEWSTATEMENT: {
-                node = _k_place_child(node, token);
 
-                break;
-            }
             case _K_TOKEN_TYPE_SEPARATOR: {
-                while (node->token->tokenable->type != _K_TOKEN_TYPE_NEWEXPRESSION) {
-                    node = node->parent;
-                }
+                while (node->token->tokenable->type != _K_TOKEN_TYPE_NEWEXPRESSION) { node = node->parent; }
+
+                after_operator = !after_operator;
 
                 break;
             }
+
             case _K_TOKEN_TYPE_ENDSTATEMENT: {
-                while (node->token->tokenable->type != _K_TOKEN_TYPE_NEWSTATEMENT) {
-                    node = node->parent;
-                }
-
+                while (node->token->tokenable->type != _K_TOKEN_TYPE_NEWSTATEMENT) { node = node->parent; }
                 /* Function body.  */
-                if (node->parent->token->tokenable->type == _K_TOKEN_TYPE_IDENTIFIER) {
-                    node = node->parent;
-                }
-
-                if (node->parent->token->tokenable->type == _K_TOKEN_TYPE_KEYWORD) {
-                    node = node->parent;
-                }
+                if (node->parent->token->tokenable->type == _K_TOKEN_TYPE_IDENTIFIER) { node = node->parent; }
+                if (node->parent->token->tokenable->type == _K_TOKEN_TYPE_KEYWORD) { node = node->parent; }
 
                 break;
             }
+
             case _K_TOKEN_TYPE_ENDLINE: {
                 /* Find next scope.  */
-                while (node->token->tokenable->type != _K_TOKEN_TYPE_NEWSTATEMENT && node->parent != (_k_tree_t*)0x0) {
-                    node = node->parent;
-                }
+                while (node->token->tokenable->type != _K_TOKEN_TYPE_NEWSTATEMENT && 
+                       node->parent != (_k_tree_t*)0x0) { node = node->parent; }
 
                 if (node->parent == (_k_tree_t*)0x0) {
                     int r = 0;
@@ -386,39 +444,49 @@ void _k_tree(_k_token_t *token, FILE *out) {
                     //_k_free_tree(root);
 
                     node = _k_place_token(&root, ++token);
+
+                    after_operator = 0;
                 }
+
+                else after_operator = 1;
 
                 break;
             }
+            
             case _K_TOKEN_TYPE_KEYWORD: {
                 if (strcmp(token->str, "do") == 0) {
-                    while (strcmp(node->token->str, "if") != 0 && strcmp(node->token->str, "while") != 0) {
-                        node = node->parent;
-                    }
+                    while (strcmp(node->token->str, "if") != 0 && strcmp(node->token->str, "while") != 0) { node = node->parent; }
 
                     break;
                 }
-
+#if 0
+                if (node != (_k_tree_t*)0x0 && (node->token->tokenable->type != _K_TOKEN_TYPE_NEWSTATEMENT)) {
+                    /* Compound keyword statements can only exist at the start of a context, within {} or in the global scope.  */
+                    _k_build_error = 2; return;
+                }
+#endif
                 node = _k_place_child(node, token);
 
                 break;
             }
             case _K_TOKEN_TYPE_ASSIGNMENT:
-            case _K_TOKEN_TYPE_OPERATOR: {
-                do {
-                    node = node->parent;
-                } while (_k_get_prec(token->str) < _k_get_prec(node->token->str));
+            case _K_TOKEN_TYPE_OPERATOR: 
+            case _K_TOKEN_TYPE_DECLARATOR: {
+                if (after_operator) {
+                    /* Probably unary.  */
 
-                _k_tree_t *temp = node->children[node->child_count - 1];
+                    node = _k_place_child(node, token);
 
-                node->children[node->child_count - 1] = (_k_tree_t*)0x0;
-                node->child_count--;
+                    break;
+                }
+
+                while (node->parent != (_k_tree_t *)0x0 && (_k_get_prec(token->str) < _k_get_prec(node->token->str)) && node->child_count != 1) { node = node->parent; }
 
                 node = _k_place_child(node, token);
-                node = _k_place_child(node, temp->token)->parent;
-                node->children[node->child_count - 1] = temp;
 
-                temp->parent = node;
+                _k_swap_parent(node);
+
+                after_operator = 1;
 
                 break;
             }
@@ -434,12 +502,12 @@ void _k_tree(_k_token_t *token, FILE *out) {
  * 
  *    @return k_build_error_t    The error code.
  */
-char *_k_compile(_k_token_t *tokens) {
+char *_k_compile(_k_token_t *tokens, int flags) {
     char   *out;
     size_t  size;
     FILE   *f = open_memstream(&out, &size);
 
-    _k_tree(tokens, f);
+    _k_tree(tokens, f, flags);
 
     fclose(f);
 

@@ -13,8 +13,6 @@ $ ----
 *
 ---- $
 
-return exp(3.0);
-
 f32: cos_approx(f32: t) { return (9.86960440109 - 4.0*t*t) / (9.86960440109 + t*t); };
 
 f32: cos(f32: t) {
@@ -94,4 +92,12 @@ f32: log(f32: t) {
 
 f32: pow(f32: b, f32: e) {
     return exp(e * log(b));
+};
+
+f32: cosh(f32: t) {
+    return (exp(t) + exp(0.0 - t)) / 2.0;
+};
+
+f32: sinh(f32: t) {
+    return (exp(t) - exp(0.0 - t)) / 2.0;
 };

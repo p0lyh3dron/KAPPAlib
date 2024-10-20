@@ -29,6 +29,32 @@
  * 
  *    @return k_build_error_t    The error code.
  */
-char *k_build(const char *source) {
-    return _k_compile(_k_lexical_analysis(source));
+char *k_build(const char *source, int flags) {
+    return _k_compile(_k_lexical_analysis(source), flags);
+}
+
+/*
+ *    Gets the error code.
+ *
+ *    @return int    The error code.
+ */
+int k_get_error_code() {
+    return _k_get_error_code();
+}
+
+/*
+ *    Gets the error message.
+ *
+ *    @param int error_code    The error code.
+ * 
+ *    @return const char    The error message.
+ */
+const char *k_get_error_message(int error_code) {
+    switch (error_code) {
+        case 0: return (const char *)0x0;
+        case 1: return "Unexpected literal following literal";
+        case 2: return "Keyword statement cannot exist in expression";
+    }
+
+    return "Unknown error";
 }

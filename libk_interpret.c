@@ -73,13 +73,17 @@ int _k_find_label(_k_interp_t *interp, const char *label) {
     buf[i]     = ':';
     buf[i + 1] = '\0';
 
-    if (strstr(interp->source, buf) == (char*)0x0) {
+    char *ptr = strstr(interp->source, buf);
+
+    while (ptr != (char *)0x0 && ptr[-1] != '\n') { ptr = strstr(ptr + 1, buf); }
+
+    if (ptr == (char*)0x0) {
         fprintf(stderr, "Failed to find label %s!\n", buf);
         
         return 1;
     }
 
-    interp->frame->ip = strstr(interp->source, buf) - interp->source;
+    interp->frame->ip = ptr - interp->source;
 
     return 0;
 }
@@ -107,6 +111,8 @@ int _k_poprr(_k_interp_t *interp, char *a0, char *a1, char *a2) {
 }
 
 int _k_newsv(_k_interp_t *interp, char *a0, char *a1, char *a2) {
+    interp->frame->sp -= sizeof(long);
+    
     interp->frame->vars = realloc(interp->frame->vars, sizeof(_k_var_t) * (interp->frame->var_count + 1));
 
     char buf[256];
@@ -133,8 +139,6 @@ int _k_newsv(_k_interp_t *interp, char *a0, char *a1, char *a2) {
 
     interp->frame->vars[interp->frame->var_count].type = strdup(buf);
     interp->frame->vars[interp->frame->var_count].mem  = interp->mem + interp->frame->sp;
-
-    interp->frame->sp -= sizeof(long);
 
     interp->frame->var_count++;
 
@@ -267,7 +271,7 @@ int _k_saver(_k_interp_t *interp, char *a0, char *a1, char *a2) {
                 memcpy(interp->frame->vars[i].mem, &l, sizeof(long));
             }
 
-            _k_print_args(interp);
+            //_k_print_args(interp);
 
             return 0;
         }
@@ -516,6 +520,59 @@ int _k_jmpal(_k_interp_t *interp, char *a0, char *a1, char *a2) {
     return _k_find_label(interp, a0);
 }
 
+int _k_deref(_k_interp_t *interp, char *a0, char *a1, char *a2) {
+    long addr = *(long*)_k_get_register(interp, a1);
+
+    memcpy(_k_get_register(interp, a0), (char*)addr, sizeof(long));
+
+    /*if (interp->frame->rf[atoi(a0 + 1)])
+        printf("Dereferenced %ld to %f\n", addr, *(double*)_k_get_register(interp, a0));
+
+    else printf("Dereferenced %ld to %ld\n", addr, *(long*)_k_get_register(interp, a0));*/
+
+    return 0;
+}
+
+int _k_refsv(_k_interp_t *interp, char *a0, char *a1, char *a2) {
+    char buf[256];
+
+    for (int i = 0; i < 256; i++) {
+        if (a1[i] == '\n' || a1[i] == '\0') {
+            buf[i] = '\0';
+            break;
+        }
+
+        buf[i] = a1[i];
+    }
+
+    for (long i = 0; i < interp->frame->var_count; ++i) {
+        if (strcmp(interp->frame->vars[i].name, buf) == 0) {
+            memcpy(_k_get_register(interp, a0), &interp->frame->vars[i].mem, sizeof(long));
+
+            interp->frame->rf[atoi(a0 + 1)] = interp->frame->vars[i].type[0] == 'f' ? 1 : 0;
+
+            return 0;
+        }
+    }
+
+    printf("Failed to reference variable %s!\n", a1);
+
+    return 1;
+}
+
+int _k_savea(_k_interp_t *interp, char *a0, char *a1, char *a2) {
+    long addr = *(long*)_k_get_register(interp, a0);
+
+    memcpy((char*)addr, _k_get_register(interp, a1), sizeof(long));
+
+    /*if (interp->frame->rf[atoi(a1 + 1)])
+        printf("Saved %f to %ld\n", *(double*)_k_get_register(interp, a1), addr);
+
+    else printf("Saved %ld to %ld\n", *(long*)_k_get_register(interp, a1), addr);*/
+
+    return 0;
+}
+
 const _k_inst_t _k_inst_list[] = {
     {"\tpushr:", _k_pushr},
     {"\tpoprr:", _k_poprr},
@@ -535,8 +592,62 @@ const _k_inst_t _k_inst_list[] = {
     {"\tequrr:", _k_equrr},
     {"\tcmprd:", _k_cmprd},
     {"\tjmpeq:", _k_jmpeq},
-    {"\tjmpal:", _k_jmpal}
+    {"\tjmpal:", _k_jmpal},
+    {"\tderef:", _k_deref},
+    {"\trefsv:", _k_refsv},
+    {"\tsavea:", _k_savea}
 };
+
+int push(_k_interp_t *interp, void *data, long size) {
+    interp->frame->sp -= size;
+    memcpy(interp->mem + interp->frame->sp, &data, size);
+
+    return 0;
+}
+
+int call(_k_interp_t *interp, char *func) {
+    _k_frame_t *frame = malloc(sizeof(_k_frame_t));
+
+    frame->vars = (_k_var_t*)0x0;
+    frame->var_count = 0;
+    frame->next = (_k_frame_t*)0x0;
+    frame->prev = interp->frame;
+    frame->sp = interp->frame->sp;
+    frame->bp = interp->frame->sp;
+    frame->ip = interp->frame->ip;
+
+    interp->frame = frame;
+
+    return _k_find_label(interp, func);
+}
+
+double loop(_k_interp_t *interp, _k_frame_t *start) {
+    double r0 = 0;
+    do {
+        r0 = *(double*)&interp->frame->r[0];
+        char *line = _k_fetch_line(interp);
+
+        //printf("Executing %s", line);
+
+        char *inst = strtok(line, " ");
+        char *a0   = strtok((char*)0x0, " ");
+        char *a1   = strtok((char*)0x0, " ");
+        char *a2   = strtok((char*)0x0, " ");
+
+        if (inst == (char*)0x0)
+            continue;
+
+        for (int i = 0; i < sizeof(_k_inst_list) / sizeof(_k_inst_t); i++) {
+            if (strcmp(inst, _k_inst_list[i].name) == 0) {
+                if (_k_inst_list[i].func(interp, a0, a1, a2)) return 1;
+
+                break;
+            }
+        }
+    } while(interp->frame != start);
+
+    return r0;
+}
 
 int main() {
     FILE *fp = fopen("math.kasm", "r");
@@ -572,36 +683,82 @@ int main() {
     interp->frame->bp = interp->size;
     interp->frame->ip = 0;
 
+    _k_frame_t *frame = interp->frame;
+
     long   r0d = 0;
     double r0f = 0.0;
 
-    do {
-        r0d = interp->frame->r[0];
-        r0f = *(double*)&r0d;
+    double rmin;
+    double rmax;
 
-        char *line = _k_fetch_line(interp);
+    double imin;
+    double imax;
 
-        printf("Executing %s", line);
+    double real = 1.0;
+    double imag = 1.0;
 
-        char *inst = strtok(line, " ");
-        char *a0   = strtok((char*)0x0, " ");
-        char *a1   = strtok((char*)0x0, " ");
-        char *a2   = strtok((char*)0x0, " ");
+    //push(interp, &real, sizeof(double));
+    //push(interp, &imag, sizeof(double));
+    call(interp, "rmin");
+    rmin = loop(interp, frame);
 
-        if (inst == (char*)0x0)
-            continue;
+    call(interp, "rmax");
+    rmax = loop(interp, frame);
 
-        for (int i = 0; i < sizeof(_k_inst_list) / sizeof(_k_inst_t); i++) {
-            if (strcmp(inst, _k_inst_list[i].name) == 0) {
-                if (_k_inst_list[i].func(interp, a0, a1, a2)) return 1;
+    call(interp, "imin");
+    imin = loop(interp, frame);
 
-                break;
+    call(interp, "imax");
+    imax = loop(interp, frame);
+
+    fprintf(stderr, "rmin = %f\n", rmin);
+    fprintf(stderr, "rmax = %f\n", rmax);
+    fprintf(stderr, "imin = %f\n", imin);
+    fprintf(stderr, "imax = %f\n", imax);
+
+    const int W = 1280; const int H = 720;
+    char img[W][H];
+
+    for (int y = 0; y < H; y++) {
+        for (int x = 0; x < W; x++) {
+            int i = 0;
+
+            real = rmin + (rmax - rmin) * x / W;
+            imag = imin + (imax - imin) * y / H;
+
+            while (real * real + imag * imag < 16 && i < 64) {
+                call(interp, "z");
+                push(interp, &real, sizeof(double));
+                push(interp, &imag, sizeof(double));
+                loop(interp, frame);
+
+                real += rmin + (rmax - rmin) * x / W;
+                imag += imin + (imax - imin) * y / H;
+
+                i++;
             }
-        }
-    } while(interp->frame != (_k_frame_t*)0x0);
 
-    printf("r0 = %d (as decimal)\n", r0d);
-    printf("r0 = %f (as float)\n", r0f);
+            img[x][y] = i == 64 ? 0 : 4 * i;
+        }
+
+        fprintf(stderr, "%d\%\n", y * 100 / H);
+    }
+
+    printf("P6\n%d %d\n100\n", W, H);
+
+    for (int y = 0; y < H; y++) {
+        for (int x = 0; x < W; x++) {
+            printf("%c%c%c", img[x][y], 0, 0);
+        }
+    }
+    
+
+    /*printf("r0 = %d (as decimal)\n", r0d);
+    printf("r0 = %f (as float)\n", r0f);*/
+
+    /*printf("real = %f\n", rmin);
+    printf("imag = %f\n", imag);*/
+    
 
     free(interp->mem);
     free(interp->source);

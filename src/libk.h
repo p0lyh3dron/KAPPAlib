@@ -26,6 +26,22 @@
  * 
  *    @return k_build_error_t    The error code.
  */
-char *k_build(const char *source);
+char *k_build(const char *source, int flags);
+
+/*
+ *    Gets the error code.
+ *
+ *    @return int    The error code.
+ */
+int k_get_error_code();
+
+/*
+ *    Gets the error message.
+ *
+ *    @param int error_code    The error code.
+ * 
+ *    @return const char    The error message.
+ */
+const char *k_get_error_message(int error_code);
 
 #endif /* _LIBK_H  */
