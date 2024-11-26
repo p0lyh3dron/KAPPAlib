@@ -32,6 +32,7 @@ typedef enum {
     _K_TOKEN_TYPE_START,
     _K_TOKEN_TYPE_LITERAL,
     _K_TOKEN_TYPE_ASSIGNMENT,
+    _K_TOKEN_TYPE_MEMBER,
 } _k_token_type_e;
 
 typedef enum {

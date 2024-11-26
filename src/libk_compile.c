@@ -38,6 +38,7 @@ char _k_get_prec(char *op) {
     if (strcmp(op, "+") == 0)  return 4; if (strcmp(op, "-") == 0)  return 4;
     if (strcmp(op, "*") == 0)  return 5; if (strcmp(op, "/") == 0)  return 5; 
     if (strcmp(op, "^") == 0)  return 6;
+    if (strcmp(op, ".") == 0)  return 7;
 
     return 0;
 }
@@ -183,6 +184,25 @@ void _k_compile_tree(_k_tree_t *root, int *r, int *s, FILE *out) {
             }
 
             strcat(type, node->token->str);
+
+            if (strcmp(root->children[0]->token->str, "type") == 0) {
+                fprintf(out, "%s: \n", root->children[1]->token->str);
+
+                for (unsigned long i = 0; i < root->children[1]->child_count; i++) {
+                    _k_compile_tree(root->children[1]->children[i], r, s, out);
+                }
+
+                break;
+            }
+
+            if (root->child_count > 1 && root->children[1]->child_count > 0 && root->children[1]->children[0]->token->tokenable->type == _K_TOKEN_TYPE_NEWINDEX) {
+                char *name  = root->children[1]->token->str;
+                char *count = root->children[1]->children[0]->children[0]->token->str;
+
+                fprintf(out, "\tnewav: %s %s %d\n", type, name, atoi(count));
+
+                break;
+            }
             
             if (root->children[1]->child_count > 0 && root->children[1]->children[0]->token->tokenable->type == _K_TOKEN_TYPE_NEWEXPRESSION) {
                 char *name = root->children[1]->token->str;
@@ -239,6 +259,17 @@ void _k_compile_tree(_k_tree_t *root, int *r, int *s, FILE *out) {
                 break;
             }
 
+            if (root->child_count > 0 && root->children[0]->token->tokenable->type == _K_TOKEN_TYPE_NEWINDEX) {
+                fprintf(out, "\tloadr: r%d %s\n", ++*r, root->token->str);
+                _k_compile_tree(root->children[0]->children[0], r, s, out);
+                fprintf(out, "\taddrr: r%d r%d r%d\n", *r - 1, *r - 1, *r);
+                fprintf(out, "\tderef: r%d r%d\n", *r - 1, *r - 1);
+
+                *r -= 1;
+
+                break;
+            }
+
             fprintf(out, "\tloadr: r%d %s\n", ++*r, root->token->str);
 
             break;
@@ -251,24 +282,58 @@ void _k_compile_tree(_k_tree_t *root, int *r, int *s, FILE *out) {
         }
 
         case _K_TOKEN_TYPE_ASSIGNMENT: {
-            _k_compile_tree(root->children[1], r, s, out);
-
             _k_tree_t *temp = root->children[0];
-            int        count = 0;
+            int        ptrcnt = 0;
+            int        memcnt = 0;
+            int        arrcnt = 0;
+
+            if (temp->child_count > 0 && strcmp(temp->children[0]->token->str, "[") == 0) {
+                fprintf(out, "\tloadr: r%d %s\n", ++(*r), temp->token->str);
+
+                _k_compile_tree(temp->children[0]->children[0], r, s, out);
+
+                fprintf(out, "\taddrr: r%d r%d r%d\n", *r - 1, *r - 1, *r);
+
+                *r -= 1;
+
+                arrcnt = 1;
+            }
+
+            while (strcmp(temp->token->str, ".") == 0) {
+                temp = temp->children[0];
+
+                memcnt++;
+            }
+
+            if (memcnt > 0) {
+                fprintf(out, "\tloadr: r%d %s\n", ++(*r), temp->token->str);
+            }
+
+            for (int i = 0; i < memcnt; i++) {
+                temp = temp->parent;
+
+                fprintf(out, "\tadszr: r%d r%d %s\n", *r, *r, temp->children[1]->token->str);
+            }
+            
+            _k_compile_tree(root->children[1], r, s, out);
 
             while (strcmp(temp->token->str, "*") == 0) {
                 temp = temp->children[0];
 
-                count++;
+                ptrcnt++;
             }
 
-            if (count > 0) fprintf(out, "\tloadr: r%d %s\n", ++*r, temp->token->str);
+            if (ptrcnt > 0) fprintf(out, "\tloadr: r%d %s\n", ++*r, temp->token->str);
 
-            for (int i = 0; i < count - 1; i++) {
+            for (int i = 0; i < ptrcnt - 1; i++) {
                 fprintf(out, "\tderef: r%d r%d\n", *r, *r);
             }
 
-            if (count > 0) { fprintf(out, "\tsavea: r%d r%d\n", *r, *r - 1); *r -= 2; break; }
+            if (ptrcnt > 0) { fprintf(out, "\tsavea: r%d r%d\n", *r - 1, *r); *r -= 2; break; }
+
+            if (memcnt > 0) { fprintf(out, "\tsavea: r%d r%d\n", *r - 1, *r); *r -= 2; break; }
+
+            if (arrcnt > 0) { fprintf(out, "\tsavea: r%d r%d\n", *r - 1, *r); *r -= 2; break; }
 
             fprintf(out, "\tsaver: %s r%d\n", root->children[0]->token->str, (*r)--);
 
@@ -277,6 +342,15 @@ void _k_compile_tree(_k_tree_t *root, int *r, int *s, FILE *out) {
 
         case _K_TOKEN_TYPE_OPERATOR: {
             if (root->child_count > 1) {
+                if (strcmp(root->token->str, ".") == 0) {
+                    _k_compile_tree(root->children[0], r, s, out);
+
+                    fprintf(out, "\tadszr: r%d r%d %s\n", *r, *r, root->children[1]->token->str);
+                    fprintf(out, "\tderef: r%d r%d\n", *r, *r);
+
+                    break;
+                }
+
                 _k_compile_tree(root->children[0], r, s, out);
                 _k_compile_tree(root->children[1], r, s, out);
                 _k_compile_bin_op(root->token, r, out);
@@ -311,9 +385,12 @@ void _k_compile_tree(_k_tree_t *root, int *r, int *s, FILE *out) {
 
         case _K_TOKEN_TYPE_KEYWORD: {
             if (strcmp(root->token->str, "return") == 0) {
-                _k_compile_tree(root->children[0], r, s, out);
+                if (root->child_count > 0) {
+                    _k_compile_tree(root->children[0], r, s, out);
+                    fprintf(out, "\tmovrr: r0 r%d\n", *r);
+                }
 
-                fprintf(out, "\tmovrr: r0 r%d\n\tleave: \n", (*r)--);
+                fprintf(out, "\tleave: \n", (*r)--);
 
                 break;
             }
@@ -390,6 +467,10 @@ void _k_tree(_k_token_t *token, FILE *out, int flags) {
                     _k_build_error = 1; return; 
                 }
 
+                if (strcmp(node->token->str, ".") == 0) {
+                    node = _k_place_child(node, token)->parent; after_operator = 0; break;
+                }
+
                 if (node->token->tokenable->type == _K_TOKEN_TYPE_OPERATOR || node->token->tokenable->type == _K_TOKEN_TYPE_ASSIGNMENT) {
                     /* Probably unary.  */
 
@@ -403,7 +484,8 @@ void _k_tree(_k_token_t *token, FILE *out, int flags) {
                 node = _k_place_child(node, token); after_operator = 0; break; 
             }
             case _K_TOKEN_TYPE_NEWEXPRESSION: 
-            case _K_TOKEN_TYPE_NEWSTATEMENT: { 
+            case _K_TOKEN_TYPE_NEWSTATEMENT: 
+            case _K_TOKEN_TYPE_NEWINDEX: { 
                 node = _k_place_child(node, token); after_operator = 1; break;
             }
             case _K_TOKEN_TYPE_ENDEXPRESSION: {
@@ -427,6 +509,14 @@ void _k_tree(_k_token_t *token, FILE *out, int flags) {
                 /* Function body.  */
                 if (node->parent->token->tokenable->type == _K_TOKEN_TYPE_IDENTIFIER) { node = node->parent; }
                 if (node->parent->token->tokenable->type == _K_TOKEN_TYPE_KEYWORD) { node = node->parent; }
+
+                break;
+            }
+
+            case _K_TOKEN_TYPE_ENDINDEX: {
+                while (node->token->tokenable->type != _K_TOKEN_TYPE_NEWINDEX) { node = node->parent; }
+
+                node = node->parent;
 
                 break;
             }
@@ -480,7 +570,7 @@ void _k_tree(_k_token_t *token, FILE *out, int flags) {
                     break;
                 }
 
-                while (node->parent != (_k_tree_t *)0x0 && (_k_get_prec(token->str) < _k_get_prec(node->token->str)) && node->child_count != 1) { node = node->parent; }
+                while (node->parent != (_k_tree_t *)0x0 && (_k_get_prec(token->str) < _k_get_prec(node->parent->token->str)) && node->parent->child_count != 1) { node = node->parent; }
 
                 node = _k_place_child(node, token);
 
