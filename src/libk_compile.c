@@ -314,8 +314,6 @@ void _k_compile_tree(_k_tree_t *root, int *r, int *s, FILE *out) {
 
                 fprintf(out, "\tadszr: r%d r%d %s\n", *r, *r, temp->children[1]->token->str);
             }
-            
-            _k_compile_tree(root->children[1], r, s, out);
 
             while (strcmp(temp->token->str, "*") == 0) {
                 temp = temp->children[0];
@@ -323,11 +321,13 @@ void _k_compile_tree(_k_tree_t *root, int *r, int *s, FILE *out) {
                 ptrcnt++;
             }
 
-            if (ptrcnt > 0) fprintf(out, "\tloadr: r%d %s\n", ++*r, temp->token->str);
+            if (ptrcnt > 0) fprintf(out, "\tloadr: r%d %s\n", ++(*r), temp->token->str);
 
             for (int i = 0; i < ptrcnt - 1; i++) {
                 fprintf(out, "\tderef: r%d r%d\n", *r, *r);
             }
+            
+            _k_compile_tree(root->children[1], r, s, out);
 
             if (ptrcnt > 0) { fprintf(out, "\tsavea: r%d r%d\n", *r - 1, *r); *r -= 2; break; }
 
@@ -343,6 +343,12 @@ void _k_compile_tree(_k_tree_t *root, int *r, int *s, FILE *out) {
         case _K_TOKEN_TYPE_OPERATOR: {
             if (root->child_count > 1) {
                 if (strcmp(root->token->str, ".") == 0) {
+                    if (root->children[0]->token->tokenable->type == _K_TOKEN_TYPE_NUMBER) {
+                        fprintf(out, "\tmovrf: r%d %s.%s\n", ++*r, root->children[0]->token->str, root->children[1]->token->str);
+
+                        break;
+                    }
+
                     _k_compile_tree(root->children[0], r, s, out);
 
                     fprintf(out, "\tadszr: r%d r%d %s\n", *r, *r, root->children[1]->token->str);

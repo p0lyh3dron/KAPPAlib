@@ -17,13 +17,25 @@ typedef struct {
     char *mem;
 } _k_var_t;
 
+typedef struct {
+    int      (*func)(void *, void *, void *, void *);
+    void      *a0;
+    void      *a1;
+    void      *a2;
+    char       flags;
+} _k_inst2_t;
+
+typedef struct {
+    long r;
+    char rf;
+} _k_reg_t;
+
 typedef struct _k_frame_s {
-    long sp;
-    long bp;
-    long ip;
-    long r[32];
-    char rf[32];
-    char cmp;
+    long        sp;
+    long        bp;
+    _k_inst2_t *cur;
+    _k_reg_t    r[32];
+    char        cmp;
 
     _k_var_t *vars;
     long      var_count;
@@ -33,9 +45,21 @@ typedef struct _k_frame_s {
 } _k_frame_t;
 
 typedef struct {
+    char *name;
+    void *ptr;
+} _k_label_t;
+
+typedef struct {
     char *source;
     char *mem;
     long  size;
+
+    _k_inst2_t *insts;
+    _k_inst2_t *cur;
+    long        inst_count;
+
+    _k_label_t *labels;
+    long        label_count;
 
     _k_frame_t *frame;
 } _k_interp_t;
@@ -45,66 +69,66 @@ typedef struct {
     int (*func)(_k_interp_t *, char *, char *, char *);
 } _k_inst_t;
 
+typedef enum {
+    _K_INST_PUSHR,
+    _K_INST_POPRR,
+    _K_INST_NEWSV,
+    _K_INST_LEAVE,
+    _K_INST_MOVRN,
+    _K_INST_MOVRR,
+    _K_INST_CALLF,
+    _K_INST_LOADR,
+    _K_INST_SAVER,
+    _K_INST_ADDRR,
+    _K_INST_SUBRR,
+    _K_INST_MULRR,
+    _K_INST_DIVRR,
+    _K_INST_LESRR,
+    _K_INST_GRERR,
+    _K_INST_EQURR,
+    _K_INST_CMPRD,
+    _K_INST_JMPEQ,
+    _K_INST_JMPAL,
+    _K_INST_DEREF,
+    _K_INST_REFSV,
+    _K_INST_SAVEA
+} _k_inst_e;
+
 void _k_print_args(_k_interp_t *interp) {
     for (int i = 0; i < interp->frame->var_count; ++i) {
         printf("%s: %s = %ld (long) %f (double)\n", interp->frame->vars[i].type, interp->frame->vars[i].name, *(long*)interp->frame->vars[i].mem, *(double*)interp->frame->vars[i].mem);
     }
 }
 
-char *_k_fetch_line(_k_interp_t *interp) {
-    static char ret[256];
-    char *line = interp->source + interp->frame->ip;
-    while (interp->source[interp->frame->ip++] != '\n');
-
-    strncpy(ret, line, interp->source + interp->frame->ip - line);
-
-    ret[interp->source + interp->frame->ip - line] = '\0';
-
-    return ret;
-}
-
 int _k_find_label(_k_interp_t *interp, const char *label) {
-    int         i = 0;
-    static char buf[256];
-    for (; label[i] != '\n' && label[i] != '\0'; i++) {
-        buf[i] = label[i]; 
+    for (long i = 0; i < interp->label_count; ++i) {
+        if (strcmp(interp->labels[i].name, label) == 0) {
+            interp->frame->cur = (_k_inst2_t *)(interp->labels[i].ptr);
+
+            return 0;
+        }
     }
-
-    buf[i]     = ':';
-    buf[i + 1] = '\0';
-
-    char *ptr = strstr(interp->source, buf);
-
-    while (ptr != (char *)0x0 && ptr[-1] != '\n') { ptr = strstr(ptr + 1, buf); }
-
-    if (ptr == (char*)0x0) {
-        fprintf(stderr, "Failed to find label %s!\n", buf);
-        
-        return 1;
-    }
-
-    interp->frame->ip = ptr - interp->source;
 
     return 0;
 }
 
-long *_k_get_register(_k_interp_t *interp, char *reg) {
+void *_k_get_register(_k_interp_t *interp, char *reg) {
     if (reg[0] == 'r') {
-        return &interp->frame->r[atoi(reg + 1)];
+        return (void*)atoi(reg + 1);
     } else {
-        return (long*)0x0;
+        return (void*)0x0;
     }
 }
 
 int _k_pushr(_k_interp_t *interp, char *a0, char *a1, char *a2) {
     interp->frame->sp -= sizeof(long);
-    memcpy(interp->mem + interp->frame->sp, _k_get_register(interp, a0), sizeof(long));
+    memcpy(interp->mem + interp->frame->sp, &interp->frame->r[(long)a0], sizeof(long));
 
     return 0;
 }
 
 int _k_poprr(_k_interp_t *interp, char *a0, char *a1, char *a2) {
-    memcpy(_k_get_register(interp, a0), interp->mem + interp->frame->sp, sizeof(long));
+    memcpy(&interp->frame->r[(long)a0], interp->mem + interp->frame->sp, sizeof(long));
     interp->frame->sp += sizeof(long);
 
     return 0;
@@ -149,8 +173,8 @@ int _k_leave(_k_interp_t *interp, char *a0, char *a1, char *a2) {
     _k_frame_t *frame = interp->frame;
 
     if (frame->prev != (_k_frame_t*)0x0) {
-        interp->frame->prev->r[0]  = interp->frame->r[0];
-        interp->frame->prev->rf[0] = interp->frame->rf[0];
+        interp->frame->prev->r[0].r  = interp->frame->r[0].r;
+        interp->frame->prev->r[0].rf = interp->frame->r[0].rf;
     }
 
     interp->frame = interp->frame->prev;
@@ -162,41 +186,25 @@ int _k_leave(_k_interp_t *interp, char *a0, char *a1, char *a2) {
 }
 
 int _k_movrn(_k_interp_t *interp, char *a0, char *a1, char *a2) {
-    if (strchr(a1, '.')) {
-        interp->frame->rf[atoi(a0 + 1)] = 1;
+    _k_reg_t *r0 = &interp->frame->r[(long)a0];
+    
+    r0->r  = *(long*)&a1;
+    r0->rf = 0;
 
-        double f = strtof(a1, (char**)0x0);
+    return 0;
+}
 
-        memcpy(_k_get_register(interp, a0), &f, sizeof(long));
-    }
+int _k_movrf(_k_interp_t *interp, char *a0, char *a1, char *a2) {
+    _k_reg_t *r0 = &interp->frame->r[(long)a0];
 
-    else {
-        interp->frame->rf[atoi(a0 + 1)] = 0;
-
-        long l = strtol(a1, (char**)0x0, 10);
-
-        memcpy(_k_get_register(interp, a0), &l, sizeof(long));
-    }
+    *(double*)&(r0->r)  = *(double*)&a1;
+    r0->rf = 1;
 
     return 0;
 }
 
 int _k_movrr(_k_interp_t *interp, char *a0, char *a1, char *a2) {
-    if (interp->frame->rf[atoi(a1 + 1)]) {
-        double f = *(double*)_k_get_register(interp, a1);
-
-        memcpy(_k_get_register(interp, a0), &f, sizeof(long));
-
-        interp->frame->rf[atoi(a0 + 1)] = 1;
-    }
-
-    else {
-        long l = *(long*)_k_get_register(interp, a1);
-
-        memcpy(_k_get_register(interp, a0), &l, sizeof(long));
-
-        interp->frame->rf[atoi(a0 + 1)] = 0;
-    }
+    memcpy(&interp->frame->r[(long)a0], &interp->frame->r[(long)a1], sizeof(_k_reg_t));
 
     return 0;
 }
@@ -210,11 +218,15 @@ int _k_callf(_k_interp_t *interp, char *a0, char *a1, char *a2) {
     frame->prev = interp->frame;
     frame->sp = interp->frame->sp;
     frame->bp = interp->frame->sp;
-    frame->ip = interp->frame->ip;
+    frame->cur = interp->frame->cur;
 
     interp->frame = frame;
 
-    return _k_find_label(interp, a0);
+    _k_find_label(interp, a0);
+
+    frame->cur--;
+
+    return 0;
 }
 
 int _k_loadr(_k_interp_t *interp, char *a0, char *a1, char *a2) {
@@ -232,19 +244,19 @@ int _k_loadr(_k_interp_t *interp, char *a0, char *a1, char *a2) {
     for (long i = 0; i < interp->frame->var_count; ++i) {
         if (strcmp(interp->frame->vars[i].name, buf) == 0) {
             if (interp->frame->vars[i].type[0] == 'f') {
-                interp->frame->rf[atoi(a0 + 1)] = 1;
+                interp->frame->r[(long)a0].rf = 1;
 
                 double f = *(double*)interp->frame->vars[i].mem;
 
-                memcpy(_k_get_register(interp, a0), &f, sizeof(long));
+                memcpy(&interp->frame->r[(long)a0], &f, sizeof(long));
             }
 
             else {
-                interp->frame->rf[atoi(a0 + 1)] = 0;
+                interp->frame->r[(long)a0].rf = 0;
 
                 long l = *(long*)interp->frame->vars[i].mem;
 
-                memcpy(_k_get_register(interp, a0), &l, sizeof(long));
+                memcpy(&interp->frame->r[(long)a0], &l, sizeof(long));
             }
 
             return 0;
@@ -257,10 +269,12 @@ int _k_loadr(_k_interp_t *interp, char *a0, char *a1, char *a2) {
 }
 
 int _k_saver(_k_interp_t *interp, char *a0, char *a1, char *a2) {
+    _k_reg_t *r0 = &interp->frame->r[(long)a1];
+
     for (long i = 0; i < interp->frame->var_count; ++i) {
         if (strcmp(interp->frame->vars[i].name, a0) == 0) {
             if (interp->frame->vars[i].type[0] == 'f') {
-                double f = *(double*)_k_get_register(interp, a1);
+                double f = *(double*)&(r0->r);
 
                 memcpy(interp->frame->vars[i].mem, &f, sizeof(double));
             }
@@ -283,227 +297,235 @@ int _k_saver(_k_interp_t *interp, char *a0, char *a1, char *a2) {
 }
 
 int _k_addrr(_k_interp_t *interp, char *a0, char *a1, char *a2) {
-    if (interp->frame->rf[atoi(a1 + 1)] && interp->frame->rf[atoi(a2 + 1)]) {
-        double f = *(double*)_k_get_register(interp, a1) + *(double*)_k_get_register(interp, a2);
+    _k_reg_t *r0 = &interp->frame->r[(long)a0];
+    _k_reg_t *r1 = &interp->frame->r[(long)a1];
+    _k_reg_t *r2 = &interp->frame->r[(long)a2];
 
-        memcpy(_k_get_register(interp, a0), &f, sizeof(double));
+    if (r1->rf && r2->rf) {
+        double f = *(double*)&r1->r + *(double*)&r2->r;
+        memcpy(&r0->r, &f, sizeof(double));
+        r0->rf = 1;
     }
 
-    else if (interp->frame->rf[atoi(a1 + 1)] && !interp->frame->rf[atoi(a2 + 1)]) {
-        double f = *(double*)_k_get_register(interp, a1) + *(long*)_k_get_register(interp, a2);
-
-        memcpy(_k_get_register(interp, a0), &f, sizeof(double));
+    else if (r1->rf && !r2->rf) {
+        double f = *(double*)&r1->r + r2->r;
+        memcpy(&r0->r, &f, sizeof(double));
+        r0->rf = 1;
     }
 
-    else if (!interp->frame->rf[atoi(a1 + 1)] && interp->frame->rf[atoi(a2 + 1)]) {
-        double f = *(long*)_k_get_register(interp, a1) + *(double*)_k_get_register(interp, a2);
-
-        memcpy(_k_get_register(interp, a0), &f, sizeof(double));
+    else if (!r1->rf && r2->rf) {
+        double f = r1->r + *(double*)&r2->r;
+        memcpy(&r0->r, &f, sizeof(double));
+        r0->rf = 1;
     }
 
     else {
-        long l = *(long*)_k_get_register(interp, a1) + *(long*)_k_get_register(interp, a2);
-
-        memcpy(_k_get_register(interp, a0), &l, sizeof(long));
+        long l = r1->r + r2->r;
+        memcpy(&r0->r, &l, sizeof(long));
+        r0->rf = 0;
     }
 
     return 0;
 }
 
 int _k_subrr(_k_interp_t *interp, char *a0, char *a1, char *a2) {
-    if (interp->frame->rf[atoi(a1 + 1)] && interp->frame->rf[atoi(a2 + 1)]) {
-        double f = *(double*)_k_get_register(interp, a1) - *(double*)_k_get_register(interp, a2);
+    _k_reg_t *r0 = &interp->frame->r[(long)a0];
+    _k_reg_t *r1 = &interp->frame->r[(long)a1];
+    _k_reg_t *r2 = &interp->frame->r[(long)a2];
 
-        memcpy(_k_get_register(interp, a0), &f, sizeof(double));
+    if (r1->rf && r2->rf) {
+        double f = *(double*)&r1->r - *(double*)&r2->r;
+        memcpy(&r0->r, &f, sizeof(double));
+        r0->rf = 1;
     }
 
-    else if (interp->frame->rf[atoi(a1 + 1)] && !interp->frame->rf[atoi(a2 + 1)]) {
-        double f = *(double*)_k_get_register(interp, a1) - *(long*)_k_get_register(interp, a2);
-
-        memcpy(_k_get_register(interp, a0), &f, sizeof(double));
+    else if (r1->rf && !r2->rf) {
+        double f = *(double*)&r1->r - r2->r;
+        memcpy(&r0->r, &f, sizeof(double));
+        r0->rf = 1;
     }
 
-    else if (!interp->frame->rf[atoi(a1 + 1)] && interp->frame->rf[atoi(a2 + 1)]) {
-        double f = *(long*)_k_get_register(interp, a1) - *(double*)_k_get_register(interp, a2);
-
-        memcpy(_k_get_register(interp, a0), &f, sizeof(double));
+    else if (!r1->rf && r2->rf) {
+        double f = r1->r - *(double*)&r2->r;
+        memcpy(&r0->r, &f, sizeof(double));
+        r0->rf = 1;
     }
 
     else {
-        long l = *(long*)_k_get_register(interp, a1) - *(long*)_k_get_register(interp, a2);
-
-        memcpy(_k_get_register(interp, a0), &l, sizeof(long));
+        long l = r1->r - r2->r;
+        memcpy(&r0->r, &l, sizeof(long));
+        r0->rf = 0;
     }
 
     return 0;
 }
 
 int _k_mulrr(_k_interp_t *interp, char *a0, char *a1, char *a2) {
-    if (interp->frame->rf[atoi(a1 + 1)] && interp->frame->rf[atoi(a2 + 1)]) {
-        double f = *(double*)_k_get_register(interp, a1) * *(double*)_k_get_register(interp, a2);
+    _k_reg_t *r0 = &interp->frame->r[(long)a0];
+    _k_reg_t *r1 = &interp->frame->r[(long)a1];
+    _k_reg_t *r2 = &interp->frame->r[(long)a2];
 
-        memcpy(_k_get_register(interp, a0), &f, sizeof(double));
+    if (r1->rf && r2->rf) {
+        double f = *(double*)&r1->r * *(double*)&r2->r;
+        memcpy(&r0->r, &f, sizeof(double));
+        r0->rf = 1;
     }
 
-    else if (interp->frame->rf[atoi(a1 + 1)] && !interp->frame->rf[atoi(a2 + 1)]) {
-        double f = *(double*)_k_get_register(interp, a1) * *(long*)_k_get_register(interp, a2);
-
-        memcpy(_k_get_register(interp, a0), &f, sizeof(double));
+    else if (r1->rf && !r2->rf) {
+        double f = *(double*)&r1->r * r2->r;
+        memcpy(&r0->r, &f, sizeof(double));
+        r0->rf = 1;
     }
 
-    else if (!interp->frame->rf[atoi(a1 + 1)] && interp->frame->rf[atoi(a2 + 1)]) {
-        double f = *(long*)_k_get_register(interp, a1) * *(double*)_k_get_register(interp, a2);
-
-        memcpy(_k_get_register(interp, a0), &f, sizeof(double));
+    else if (!r1->rf && r2->rf) {
+        double f = r1->r * *(double*)&r2->r;
+        memcpy(&r0->r, &f, sizeof(double));
+        r0->rf = 1;
     }
 
     else {
-        long l = *(long*)_k_get_register(interp, a1) * *(long*)_k_get_register(interp, a2);
-
-        memcpy(_k_get_register(interp, a0), &l, sizeof(long));
+        long l = r1->r * r2->r;
+        memcpy(&r0->r, &l, sizeof(long));
+        r0->rf = 0;
     }
 
     return 0;
 }
 
 int _k_divrr(_k_interp_t *interp, char *a0, char *a1, char *a2) {
-    if (interp->frame->rf[atoi(a1 + 1)] && interp->frame->rf[atoi(a2 + 1)]) {
-        double f = *(double*)_k_get_register(interp, a1) / *(double*)_k_get_register(interp, a2);
+    _k_reg_t *r0 = &interp->frame->r[(long)a0];
+    _k_reg_t *r1 = &interp->frame->r[(long)a1];
+    _k_reg_t *r2 = &interp->frame->r[(long)a2];
 
-        memcpy(_k_get_register(interp, a0), &f, sizeof(double));
+    if (r1->rf && r2->rf) {
+        double f = *(double*)&r1->r / *(double*)&r2->r;
+        memcpy(&r0->r, &f, sizeof(double));
+        r0->rf = 1;
     }
 
-    else if (interp->frame->rf[atoi(a1 + 1)] && !interp->frame->rf[atoi(a2 + 1)]) {
-        double f = *(double*)_k_get_register(interp, a1) / *(long*)_k_get_register(interp, a2);
-
-        memcpy(_k_get_register(interp, a0), &f, sizeof(double));
+    else if (r1->rf && !r2->rf) {
+        double f = *(double*)&r1->r / r2->r;
+        memcpy(&r0->r, &f, sizeof(double));
+        r0->rf = 1;
     }
 
-    else if (!interp->frame->rf[atoi(a1 + 1)] && interp->frame->rf[atoi(a2 + 1)]) {
-        double f = *(long*)_k_get_register(interp, a1) / *(double*)_k_get_register(interp, a2);
-
-        memcpy(_k_get_register(interp, a0), &f, sizeof(double));
+    else if (!r1->rf && r2->rf) {
+        double f = r1->r / *(double*)&r2->r;
+        memcpy(&r0->r, &f, sizeof(double));
+        r0->rf = 1;
     }
 
     else {
-        long l = *(long*)_k_get_register(interp, a1) / *(long*)_k_get_register(interp, a2);
-
-        memcpy(_k_get_register(interp, a0), &l, sizeof(long));
+        long l = r1->r / r2->r;
+        memcpy(&r0->r, &l, sizeof(long));
+        r0->rf = 0;
     }
 
     return 0;
 }
 
 int _k_lesrr(_k_interp_t *interp, char *a0, char *a1, char *a2) {
-    if (interp->frame->rf[atoi(a1 + 1)] && interp->frame->rf[atoi(a2 + 1)]) {
-        long l = (long)(*(double*)_k_get_register(interp, a1) < *(double*)_k_get_register(interp, a2));
+    _k_reg_t *r0 = &interp->frame->r[(long)a0];
+    _k_reg_t *r1 = &interp->frame->r[(long)a1];
+    _k_reg_t *r2 = &interp->frame->r[(long)a2];
 
-        memcpy(_k_get_register(interp, a0), &l, sizeof(double));
+    if (r1->rf && r2->rf) {
+        long f = *(double*)&r1->r < *(double*)&r2->r;
+        memcpy(&r0->r, &f, sizeof(double));
+        r0->rf = 1;
     }
 
-    else if (interp->frame->rf[atoi(a1 + 1)] && !interp->frame->rf[atoi(a2 + 1)]) {
-        long l = (long)(*(double*)_k_get_register(interp, a1) < *(long*)_k_get_register(interp, a2));
-
-        memcpy(_k_get_register(interp, a0), &l, sizeof(double));
+    else if (r1->rf && !r2->rf) {
+        long f = *(double*)&r1->r < r2->r;
+        memcpy(&r0->r, &f, sizeof(double));
+        r0->rf = 1;
     }
 
-    else if (!interp->frame->rf[atoi(a1 + 1)] && interp->frame->rf[atoi(a2 + 1)]) {
-        long l = (long)(*(long*)_k_get_register(interp, a1) < *(double*)_k_get_register(interp, a2));
-
-        memcpy(_k_get_register(interp, a0), &l, sizeof(double));
+    else if (!r1->rf && r2->rf) {
+        long f = r1->r < *(double*)&r2->r;
+        memcpy(&r0->r, &f, sizeof(double));
+        r0->rf = 1;
     }
 
     else {
-        long l = *(long*)_k_get_register(interp, a1) < *(long*)_k_get_register(interp, a2);
-
-        memcpy(_k_get_register(interp, a0), &l, sizeof(long));
+        long l = r1->r < r2->r;
+        memcpy(&r0->r, &l, sizeof(long));
+        r0->rf = 0;
     }
 
     return 0;
 }
 
 int _k_grerr(_k_interp_t *interp, char *a0, char *a1, char *a2) {
-    if (interp->frame->rf[atoi(a1 + 1)] && interp->frame->rf[atoi(a2 + 1)]) {
-        long l = (long)(*(double*)_k_get_register(interp, a1) > *(double*)_k_get_register(interp, a2));
+    _k_reg_t *r0 = &interp->frame->r[(long)a0];
+    _k_reg_t *r1 = &interp->frame->r[(long)a1];
+    _k_reg_t *r2 = &interp->frame->r[(long)a2];
 
-        memcpy(_k_get_register(interp, a0), &l, sizeof(double));
+    if (r1->rf && r2->rf) {
+        long f = *(double*)&r1->r > *(double*)&r2->r;
+        memcpy(&r0->r, &f, sizeof(double));
+        r0->rf = 1;
     }
 
-    else if (interp->frame->rf[atoi(a1 + 1)] && !interp->frame->rf[atoi(a2 + 1)]) {
-        long l = (long)(*(double*)_k_get_register(interp, a1) > *(long*)_k_get_register(interp, a2));
-
-        memcpy(_k_get_register(interp, a0), &l, sizeof(double));
+    else if (r1->rf && !r2->rf) {
+        long f = *(double*)&r1->r > r2->r;
+        memcpy(&r0->r, &f, sizeof(double));
+        r0->rf = 1;
     }
 
-    else if (!interp->frame->rf[atoi(a1 + 1)] && interp->frame->rf[atoi(a2 + 1)]) {
-        long l = (long)(*(long*)_k_get_register(interp, a1) > *(double*)_k_get_register(interp, a2));
-
-        memcpy(_k_get_register(interp, a0), &l, sizeof(double));
+    else if (!r1->rf && r2->rf) {
+        long f = r1->r > *(double*)&r2->r;
+        memcpy(&r0->r, &f, sizeof(double));
+        r0->rf = 1;
     }
 
     else {
-        long l = *(long*)_k_get_register(interp, a1) > *(long*)_k_get_register(interp, a2);
-
-        memcpy(_k_get_register(interp, a0), &l, sizeof(long));
+        long l = r1->r > r2->r;
+        memcpy(&r0->r, &l, sizeof(long));
+        r0->rf = 0;
     }
 
     return 0;
 }
 
 int _k_equrr(_k_interp_t *interp, char *a0, char *a1, char *a2) {
-    if (interp->frame->rf[atoi(a1 + 1)] && interp->frame->rf[atoi(a2 + 1)]) {
-        long l = (long)(*(double*)_k_get_register(interp, a1) == *(double*)_k_get_register(interp, a2));
+    _k_reg_t *r0 = &interp->frame->r[(long)a0];
+    _k_reg_t *r1 = &interp->frame->r[(long)a1];
+    _k_reg_t *r2 = &interp->frame->r[(long)a2];
 
-        memcpy(_k_get_register(interp, a0), &l, sizeof(double));
+    if (r1->rf && r2->rf) {
+        long f = *(double*)&r1->r == *(double*)&r2->r;
+        memcpy(&r0->r, &f, sizeof(double));
+        r0->rf = 1;
     }
 
-    else if (interp->frame->rf[atoi(a1 + 1)] && !interp->frame->rf[atoi(a2 + 1)]) {
-        long l = (long)(*(double*)_k_get_register(interp, a1) == *(long*)_k_get_register(interp, a2));
-
-        memcpy(_k_get_register(interp, a0), &l, sizeof(double));
+    else if (r1->rf && !r2->rf) {
+        long f = *(double*)&r1->r == r2->r;
+        memcpy(&r0->r, &f, sizeof(double));
+        r0->rf = 1;
     }
 
-    else if (!interp->frame->rf[atoi(a1 + 1)] && interp->frame->rf[atoi(a2 + 1)]) {
-        long l = (long)(*(long*)_k_get_register(interp, a1) == *(double*)_k_get_register(interp, a2));
-
-        memcpy(_k_get_register(interp, a0), &l, sizeof(double));
+    else if (!r1->rf && r2->rf) {
+        long f = r1->r == *(double*)&r2->r;
+        memcpy(&r0->r, &f, sizeof(double));
+        r0->rf = 1;
     }
 
     else {
-        long l = *(long*)_k_get_register(interp, a1) == *(long*)_k_get_register(interp, a2);
-
-        memcpy(_k_get_register(interp, a0), &l, sizeof(long));
+        long l = r1->r == r2->r;
+        memcpy(&r0->r, &l, sizeof(long));
+        r0->rf = 0;
     }
 
     return 0;
 }
 
 int _k_cmprd(_k_interp_t *interp, char *a0, char *a1, char *a2) {
-    long isf = strchr(a1, '.') ? 1 : 0;
+    _k_reg_t *r0 = &interp->frame->r[(long)a0];
 
-    if (interp->frame->rf[atoi(a0 + 1)] && isf) {
-        long l = (long)(*(double*)_k_get_register(interp, a0) == strtof(a1, (char**)0x0));
-
-        interp->frame->cmp = l;
-    }
-
-    else if (interp->frame->rf[atoi(a0 + 1)] && !isf) {
-        long l = (long)(*(double*)_k_get_register(interp, a0) == strtol(a1, (char**)0x0, 10));
-
-        interp->frame->cmp = l;
-    }
-
-    else if (!interp->frame->rf[atoi(a0 + 1)] && isf) {
-        long l = (long)(*(long*)_k_get_register(interp, a0) == strtof(a1, (char**)0x0));
-
-        interp->frame->cmp = l;
-    }
-
-    else {
-        long l = *(long*)_k_get_register(interp, a0) == strtol(a1, (char**)0x0, 10);
-
-        interp->frame->cmp = l;
-    }
+    long l = r0->r == (long)a1;
+        
+    interp->frame->cmp = l;
 
     return 0;
 }
@@ -521,9 +543,9 @@ int _k_jmpal(_k_interp_t *interp, char *a0, char *a1, char *a2) {
 }
 
 int _k_deref(_k_interp_t *interp, char *a0, char *a1, char *a2) {
-    long addr = *(long*)_k_get_register(interp, a1);
+    long addr = *(long*)&interp->frame->r[(long)a1];
 
-    memcpy(_k_get_register(interp, a0), (char*)addr, sizeof(long));
+    memcpy(&interp->frame->r[(long)a0], (char*)addr, sizeof(long));
 
     /*if (interp->frame->rf[atoi(a0 + 1)])
         printf("Dereferenced %ld to %f\n", addr, *(double*)_k_get_register(interp, a0));
@@ -547,9 +569,9 @@ int _k_refsv(_k_interp_t *interp, char *a0, char *a1, char *a2) {
 
     for (long i = 0; i < interp->frame->var_count; ++i) {
         if (strcmp(interp->frame->vars[i].name, buf) == 0) {
-            memcpy(_k_get_register(interp, a0), &interp->frame->vars[i].mem, sizeof(long));
+            memcpy(&interp->frame->r[(long)a0], &interp->frame->vars[i].mem, sizeof(long));
 
-            interp->frame->rf[atoi(a0 + 1)] = interp->frame->vars[i].type[0] == 'f' ? 1 : 0;
+            interp->frame->r[atoi(a0 + 1)].rf = interp->frame->vars[i].type[0] == 'f' ? 1 : 0;
 
             return 0;
         }
@@ -561,9 +583,9 @@ int _k_refsv(_k_interp_t *interp, char *a0, char *a1, char *a2) {
 }
 
 int _k_savea(_k_interp_t *interp, char *a0, char *a1, char *a2) {
-    long addr = *(long*)_k_get_register(interp, a0);
+    long addr = *(long*)&interp->frame->r[(long)a0];
 
-    memcpy((char*)addr, _k_get_register(interp, a1), sizeof(long));
+    memcpy((char*)addr, &interp->frame->r[(long)a1], sizeof(long));
 
     /*if (interp->frame->rf[atoi(a1 + 1)])
         printf("Saved %f to %ld\n", *(double*)_k_get_register(interp, a1), addr);
@@ -614,7 +636,7 @@ int call(_k_interp_t *interp, char *func) {
     frame->prev = interp->frame;
     frame->sp = interp->frame->sp;
     frame->bp = interp->frame->sp;
-    frame->ip = interp->frame->ip;
+    frame->cur = interp->frame->cur;
 
     interp->frame = frame;
 
@@ -625,28 +647,174 @@ double loop(_k_interp_t *interp, _k_frame_t *start) {
     double r0 = 0;
     do {
         r0 = *(double*)&interp->frame->r[0];
-        char *line = _k_fetch_line(interp);
 
-        //printf("Executing %s", line);
+        if (interp->frame->cur->func(interp, interp->frame->cur->a0, interp->frame->cur->a1, interp->frame->cur->a2)) return 1;
 
-        char *inst = strtok(line, " ");
+        interp->frame->cur++;
+    } while(interp->frame != start);
+
+    return r0;
+}
+
+void _k_translate(_k_interp_t *interp) {
+    char buf[256];
+    for (int i = 0; i < strlen(interp->source); i++) {
+        int j = 0;
+
+        if (interp->source[i] != '\t') {
+
+            if (interp->source[i] == '\n') {
+                continue;
+            }
+
+            interp->label_count++;
+
+            interp->labels = realloc(interp->labels, sizeof(_k_label_t) * interp->label_count);
+
+            while (interp->source[i + j] != ':') {
+                buf[j++] = interp->source[i + j];
+            }
+
+            buf[j] = '\0';
+
+            interp->labels[interp->label_count - 1].name = strdup(buf);
+            interp->labels[interp->label_count - 1].ptr  = (void*)interp->inst_count;
+
+            while (interp->source[i + j] != '\n') {
+                j++;
+            }
+
+            i += j;
+
+            continue;
+        }
+
+        i++;
+
+        while (interp->source[i + j] != '\n') {
+            j++;
+        }
+
+        strncpy(buf, interp->source + i, j + 1);
+
+        buf[j] = '\0';
+
+        char *inst = strtok(buf, " ");
         char *a0   = strtok((char*)0x0, " ");
         char *a1   = strtok((char*)0x0, " ");
         char *a2   = strtok((char*)0x0, " ");
 
-        if (inst == (char*)0x0)
-            continue;
+        interp->inst_count++;
 
-        for (int i = 0; i < sizeof(_k_inst_list) / sizeof(_k_inst_t); i++) {
-            if (strcmp(inst, _k_inst_list[i].name) == 0) {
-                if (_k_inst_list[i].func(interp, a0, a1, a2)) return 1;
+        interp->insts = realloc(interp->insts, sizeof(_k_inst2_t) * interp->inst_count);
 
-                break;
-            }
+        interp->insts[interp->inst_count - 1].func = (int(*)(void*,void*,void*,void*))0x0;
+        interp->insts[interp->inst_count - 1].a0   = (void*)0x0;
+        interp->insts[interp->inst_count - 1].a1   = (void*)0x0;
+        interp->insts[interp->inst_count - 1].a2   = (void*)0x0;
+
+        if (strcmp(inst, "pushr:") == 0) {
+            interp->insts[interp->inst_count - 1].func = (int(*)(void*,void*,void*,void*))_k_pushr;
+            interp->insts[interp->inst_count - 1].a0   = _k_get_register(interp, a0);
+        } else if (strcmp(inst, "poprr:") == 0) {
+            interp->insts[interp->inst_count - 1].func = (int(*)(void*,void*,void*,void*))_k_poprr;
+            interp->insts[interp->inst_count - 1].a0   = _k_get_register(interp, a0);
+        } else if (strcmp(inst, "newsv:") == 0) {
+            interp->insts[interp->inst_count - 1].func = (int(*)(void*,void*,void*,void*))_k_newsv;
+            interp->insts[interp->inst_count - 1].a0   = strdup(a0);
+            interp->insts[interp->inst_count - 1].a1   = strdup(a1);
+        } else if (strcmp(inst, "leave:") == 0) {
+            interp->insts[interp->inst_count - 1].func = (int(*)(void*,void*,void*,void*))_k_leave;
+        } else if (strcmp(inst, "movrn:") == 0) {
+            interp->insts[interp->inst_count - 1].func = (int(*)(void*,void*,void*,void*))_k_movrn;
+            interp->insts[interp->inst_count - 1].a0   = _k_get_register(interp, a0);
+            interp->insts[interp->inst_count - 1].a1    = (void*)atoi(a1);
+        } else if (strcmp(inst, "movrf:") == 0) {
+            double f = atof(a1);
+
+            interp->insts[interp->inst_count - 1].func = (int(*)(void*,void*,void*,void*))_k_movrf;
+            interp->insts[interp->inst_count - 1].a0   = _k_get_register(interp, a0);
+            interp->insts[interp->inst_count - 1].a1    = (void*)*(long*)&f;
+        } else if (strcmp(inst, "movrr:") == 0) {
+            interp->insts[interp->inst_count - 1].func = (int(*)(void*,void*,void*,void*))_k_movrr;
+            interp->insts[interp->inst_count - 1].a0   = _k_get_register(interp, a0);
+            interp->insts[interp->inst_count - 1].a1   = _k_get_register(interp, a1);
+        } else if (strcmp(inst, "callf:") == 0) {
+            interp->insts[interp->inst_count - 1].func = (int(*)(void*,void*,void*,void*))_k_callf;
+            interp->insts[interp->inst_count - 1].a0   = strdup(a0);
+        } else if (strcmp(inst, "loadr:") == 0) {
+            interp->insts[interp->inst_count - 1].func = (int(*)(void*,void*,void*,void*))_k_loadr;
+            interp->insts[interp->inst_count - 1].a0   = _k_get_register(interp, a0);
+            interp->insts[interp->inst_count - 1].a1   = strdup(a1);
+        } else if (strcmp(inst, "saver:") == 0) {
+            interp->insts[interp->inst_count - 1].func = (int(*)(void*,void*,void*,void*))_k_saver;
+            interp->insts[interp->inst_count - 1].a0   = strdup(a0);
+            interp->insts[interp->inst_count - 1].a1   = _k_get_register(interp, a1);
+        } else if (strcmp(inst, "addrr:") == 0) {
+            interp->insts[interp->inst_count - 1].func = (int(*)(void*,void*,void*,void*))_k_addrr;
+            interp->insts[interp->inst_count - 1].a0   = _k_get_register(interp, a0);
+            interp->insts[interp->inst_count - 1].a1   = _k_get_register(interp, a1);
+            interp->insts[interp->inst_count - 1].a2   = _k_get_register(interp, a2);
+        } else if (strcmp(inst, "subrr:") == 0) {
+            interp->insts[interp->inst_count - 1].func = (int(*)(void*,void*,void*,void*))_k_subrr;
+            interp->insts[interp->inst_count - 1].a0   = _k_get_register(interp, a0);
+            interp->insts[interp->inst_count - 1].a1   = _k_get_register(interp, a1);
+            interp->insts[interp->inst_count - 1].a2   = _k_get_register(interp, a2);
+        } else if (strcmp(inst, "mulrr:") == 0) {
+            interp->insts[interp->inst_count - 1].func = (int(*)(void*,void*,void*,void*))_k_mulrr;
+            interp->insts[interp->inst_count - 1].a0   = _k_get_register(interp, a0);
+            interp->insts[interp->inst_count - 1].a1   = _k_get_register(interp, a1);
+            interp->insts[interp->inst_count - 1].a2   = _k_get_register(interp, a2);
+        } else if (strcmp(inst, "divrr:") == 0) {
+            interp->insts[interp->inst_count - 1].func = (int(*)(void*,void*,void*,void*))_k_divrr;
+            interp->insts[interp->inst_count - 1].a0   = _k_get_register(interp, a0);
+            interp->insts[interp->inst_count - 1].a1   = _k_get_register(interp, a1);
+            interp->insts[interp->inst_count - 1].a2   = _k_get_register(interp, a2);
+        } else if (strcmp(inst, "lesrr:") == 0) {
+            interp->insts[interp->inst_count - 1].func = (int(*)(void*,void*,void*,void*))_k_lesrr;
+            interp->insts[interp->inst_count - 1].a0   = _k_get_register(interp, a0);
+            interp->insts[interp->inst_count - 1].a1   = _k_get_register(interp, a1);
+            interp->insts[interp->inst_count - 1].a2   = _k_get_register(interp, a2);
+        } else if (strcmp(inst, "grerr:") == 0) {
+            interp->insts[interp->inst_count - 1].func = (int(*)(void*,void*,void*,void*))_k_grerr;
+            interp->insts[interp->inst_count - 1].a0   = _k_get_register(interp, a0);
+            interp->insts[interp->inst_count - 1].a1   = _k_get_register(interp, a1);
+            interp->insts[interp->inst_count - 1].a2   = _k_get_register(interp, a2);
+        } else if (strcmp(inst, "equrr:") == 0) {
+            interp->insts[interp->inst_count - 1].func = (int(*)(void*,void*,void*,void*))_k_equrr;
+            interp->insts[interp->inst_count - 1].a0   = _k_get_register(interp, a0);
+            interp->insts[interp->inst_count - 1].a1   = _k_get_register(interp, a1);
+            interp->insts[interp->inst_count - 1].a2   = _k_get_register(interp, a2);
+        } else if (strcmp(inst, "cmprd:") == 0) {
+            interp->insts[interp->inst_count - 1].func = (int(*)(void*,void*,void*,void*))_k_cmprd;
+            interp->insts[interp->inst_count - 1].a0   = _k_get_register(interp, a0);
+            interp->insts[interp->inst_count - 1].a1   = (void*)atoi(a1);
+        } else if (strcmp(inst, "jmpeq:") == 0) {
+            interp->insts[interp->inst_count - 1].func = (int(*)(void*,void*,void*,void*))_k_jmpeq;
+            interp->insts[interp->inst_count - 1].a0   = strdup(a0);
+        } else if (strcmp(inst, "jmpal:") == 0) {
+            interp->insts[interp->inst_count - 1].func = (int(*)(void*,void*,void*,void*))_k_jmpal;
+            interp->insts[interp->inst_count - 1].a0   = strdup(a0);
+        } else if (strcmp(inst, "deref:") == 0) {
+            interp->insts[interp->inst_count - 1].func = (int(*)(void*,void*,void*,void*))_k_deref;
+            interp->insts[interp->inst_count - 1].a0   = _k_get_register(interp, a0);
+            interp->insts[interp->inst_count - 1].a1   = _k_get_register(interp, a1);
+        } else if (strcmp(inst, "refsv:") == 0) {
+            interp->insts[interp->inst_count - 1].func = (int(*)(void*,void*,void*,void*))_k_refsv;
+            interp->insts[interp->inst_count - 1].a0   = _k_get_register(interp, a0);
+            interp->insts[interp->inst_count - 1].a1   = strdup(a1);
+        } else if (strcmp(inst, "savea:") == 0) {
+            interp->insts[interp->inst_count - 1].func = (int(*)(void*,void*,void*,void*))_k_savea;
+            interp->insts[interp->inst_count - 1].a0   = _k_get_register(interp, a0);
+            interp->insts[interp->inst_count - 1].a1   = _k_get_register(interp, a1);
         }
-    } while(interp->frame != start);
 
-    return r0;
+        i += j;
+    }
+
+    for (int i = 0; i < interp->label_count; i++) {
+        interp->labels[i].ptr = interp->insts + (long)interp->labels[i].ptr;
+    }
 }
 
 int main() {
@@ -674,6 +842,12 @@ int main() {
     interp->size   = 0xFFFF;
     interp->mem    = malloc(interp->size);
 
+    interp->inst_count = 0;
+    interp->insts = (_k_inst2_t*)0x0;
+
+    interp->label_count = 0;
+    interp->labels = (_k_label_t*)0x0;
+
     interp->frame = malloc(sizeof(_k_frame_t));
     interp->frame->vars = (_k_var_t*)0x0;
     interp->frame->var_count = 0;
@@ -681,9 +855,11 @@ int main() {
     interp->frame->prev = (_k_frame_t*)0x0;
     interp->frame->sp = interp->size;
     interp->frame->bp = interp->size;
-    interp->frame->ip = 0;
+    interp->frame->cur = &interp->insts[0];
 
     _k_frame_t *frame = interp->frame;
+
+    _k_translate(interp);
 
     long   r0d = 0;
     double r0f = 0.0;
@@ -716,7 +892,7 @@ int main() {
     fprintf(stderr, "imin = %f\n", imin);
     fprintf(stderr, "imax = %f\n", imax);
 
-    const int W = 1280; const int H = 720;
+    const int W = 640; const int H = 640;
     char img[W][H];
 
     for (int y = 0; y < H; y++) {
@@ -731,6 +907,8 @@ int main() {
                 push(interp, &real, sizeof(double));
                 push(interp, &imag, sizeof(double));
                 loop(interp, frame);
+
+                //printf("z = %f + %fi\n", real, imag);
 
                 real += rmin + (rmax - rmin) * x / W;
                 imag += imin + (imax - imin) * y / H;

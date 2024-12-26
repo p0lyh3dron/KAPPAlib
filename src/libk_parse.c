@@ -223,11 +223,11 @@ _k_token_t *_k_lexical_analysis(const char *source) {
             }
         }
 
-        if ((*tok)->type == _K_TOKEN_TYPE_NUMBER) {
+        /*if ((*tok)->type == _K_TOKEN_TYPE_NUMBER) {
             if (strcmp(cur->str, ".") == 0) {
                 *tok = _k_get_tokenable(_K_TOKEN_TYPE_OPERATOR);
             }
-        }
+        }*/
 
         /* Remove comments from the token stream.  */
         if ((*tok)->type != _K_TOKEN_TYPE_COMMENT) {
