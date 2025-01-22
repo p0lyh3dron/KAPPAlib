@@ -57,4 +57,13 @@ typedef struct {
     char                  *str;
 } _k_token_t;
 
+typedef struct _k_tree_s {
+    _k_token_t *token;
+    struct _k_tree_s **children;
+    unsigned long      child_count;
+
+    struct _k_tree_s *parent;
+    struct _k_tree_s *guardian;
+} _k_tree_t;
+
 #endif /* _LIBK_TYPES_H  */
