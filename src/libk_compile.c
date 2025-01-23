@@ -123,6 +123,19 @@ void _k_swap_parent(_k_tree_t *node) {
 }
 
 /*
+ *    Swaps a child's token with its parent's token.
+ *
+ *    @param _k_tree_t *child    The child to swap.
+ */
+void _k_swap_token(_k_tree_t *child) {
+    _k_tree_t *parent = child->parent;
+
+    _k_token_t *temp = parent->token;
+    parent->token = child->token;
+    child->token = temp;
+}
+
+/*
  *    Prints a tree.
  *
  *    @param _k_tree_t *root     The root of the tree.
@@ -297,22 +310,19 @@ void _k_compile_keyword(_k_tree_t **node, _k_token_t *token) {
 void _k_compile_operator(_k_tree_t **node, _k_token_t *token) {
     /* Literal with operator parent -> Token is binary  */
     if ((*node)->token->tokenable->type == _K_TOKEN_TYPE_IDENTIFIER) {
-        if ((*node)->parent != (_k_tree_t *)0x0 && (*node)->parent->token->tokenable->type == _K_TOKEN_TYPE_OPERATOR) {
+        if ((*node)->parent != (_k_tree_t *)0x0 && (*node)->parent->child_count == 1 && (*node)->parent->token->tokenable->type == _K_TOKEN_TYPE_OPERATOR) {
             (*node) = _k_place_child((*node), token);
             _k_swap_parent((*node));
-            _k_swap_parent((*node));
+            _k_swap_token((*node));
+
+            (*node) = (*node)->parent;
 
             return;
         }
     }
 
-    if ((*node)->token->tokenable->type == _K_TOKEN_TYPE_OPERATOR) {
-        /* A single operator child -> Following token is unary.  */
-        if ((*node)->child_count == 1) {
-            if ((*node)->children[0]->token->tokenable->type == _K_TOKEN_TYPE_OPERATOR) {
-                (*node) = _k_place_child((*node), token); return;
-            }
-        }
+    if ((*node)->token->tokenable->type == _K_TOKEN_TYPE_OPERATOR || (*node)->token->tokenable->type == _K_TOKEN_TYPE_ASSIGNMENT) {
+        (*node) = _k_place_child((*node), token); return;
     }
 
     while ((*node)->parent != (_k_tree_t *)0x0 && (_k_get_prec(token->str) < _k_get_prec((*node)->parent->token->str)) && (*node)->parent->child_count != 1) { (*node) = (*node)->parent; }
