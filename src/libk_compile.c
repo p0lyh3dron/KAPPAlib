@@ -258,10 +258,10 @@ void _k_compile_separator(_k_tree_t **node, _k_token_t *token) {
  *
  *    @param _k_tree_t **node    The start node.
  *    @param _k_tree_t  *root    The root of the tree.
- *    @param _k_token_t *token   The token to compile.
+ *    @param _k_token_t**token   The token to compile.
  *    @param FILE       *out     The output file.
  */
-void _k_compile_endline(_k_tree_t **node, _k_tree_t *root, _k_token_t *token, FILE *out) {
+void _k_compile_endline(_k_tree_t **node, _k_tree_t *root, _k_token_t **token, FILE *out) {
     /* Find next scope.  */
     while ((*node)->token->tokenable->type != _K_TOKEN_TYPE_NEWSTATEMENT && 
             (*node)->parent != (_k_tree_t*)0x0) { (*node) = (*node)->parent; }
@@ -273,8 +273,9 @@ void _k_compile_endline(_k_tree_t **node, _k_tree_t *root, _k_token_t *token, FI
         _k_assemble_tree(root, &r, &s, out);
 
         //_k_free_tree(root);
+        (*token)++;
 
-        (*node) = _k_place_token(&root, ++token);
+        (*node) = _k_place_token(&root, *token);
     }
 }
 
@@ -309,7 +310,7 @@ void _k_compile_keyword(_k_tree_t **node, _k_token_t *token) {
  */
 void _k_compile_operator(_k_tree_t **node, _k_token_t *token) {
     /* Literal with operator parent -> Token is binary  */
-    if ((*node)->token->tokenable->type == _K_TOKEN_TYPE_IDENTIFIER) {
+    if ((*node)->token->tokenable->type == _K_TOKEN_TYPE_IDENTIFIER ) {
         if ((*node)->parent != (_k_tree_t *)0x0 && (*node)->parent->child_count == 1 && (*node)->parent->token->tokenable->type == _K_TOKEN_TYPE_OPERATOR) {
             (*node) = _k_place_child((*node), token);
             _k_swap_parent((*node));
@@ -321,7 +322,7 @@ void _k_compile_operator(_k_tree_t **node, _k_token_t *token) {
         }
     }
 
-    if ((*node)->token->tokenable->type == _K_TOKEN_TYPE_OPERATOR || (*node)->token->tokenable->type == _K_TOKEN_TYPE_ASSIGNMENT) {
+    if (((*node)->token->tokenable->type == _K_TOKEN_TYPE_OPERATOR || (*node)->token->tokenable->type == _K_TOKEN_TYPE_ASSIGNMENT) && strcmp((*node)->token->str, ".") != 0) {
         (*node) = _k_place_child((*node), token); return;
     }
 
@@ -353,6 +354,8 @@ void _k_compile_tree(_k_token_t *token, FILE *out, int flags) {
             root = root->parent;
         }
 
+        if (_k_build_error != 0) break;
+
         if (flags) {
             fprintf(stderr, "Token: %s\n", token->str);
             fprintf(stderr, "----------\n");
@@ -362,20 +365,20 @@ void _k_compile_tree(_k_token_t *token, FILE *out, int flags) {
 
         switch (token->tokenable->type) {
             case _K_TOKEN_TYPE_IDENTIFIER:
-            case _K_TOKEN_TYPE_NUMBER:              { _k_compile_literal(&node, token);             break; }
+            case _K_TOKEN_TYPE_NUMBER:              { _k_compile_literal(&node, token);              break; }
             case _K_TOKEN_TYPE_NEWEXPRESSION: 
             case _K_TOKEN_TYPE_NEWSTATEMENT: 
-            case _K_TOKEN_TYPE_NEWINDEX:            { _k_compile_context(&node, token);             break; }
-            case _K_TOKEN_TYPE_ENDEXPRESSION:       { _k_compile_end_expression(&node, token);      break; }
-            case _K_TOKEN_TYPE_SEPARATOR:           { _k_compile_separator(&node, token);           break; }
-            case _K_TOKEN_TYPE_ENDSTATEMENT:        { _k_compile_end_statement(&node, token);       break; }
-            case _K_TOKEN_TYPE_ENDINDEX:            { _k_compile_end_index(&node, token);           break; }
-            case _K_TOKEN_TYPE_ENDLINE:             { _k_compile_endline(&node, root, token, out);  break; }
+            case _K_TOKEN_TYPE_NEWINDEX:            { _k_compile_context(&node, token);              break; }
+            case _K_TOKEN_TYPE_ENDEXPRESSION:       { _k_compile_end_expression(&node, token);       break; }
+            case _K_TOKEN_TYPE_SEPARATOR:           { _k_compile_separator(&node, token);            break; }
+            case _K_TOKEN_TYPE_ENDSTATEMENT:        { _k_compile_end_statement(&node, token);        break; }
+            case _K_TOKEN_TYPE_ENDINDEX:            { _k_compile_end_index(&node, token);            break; }
+            case _K_TOKEN_TYPE_ENDLINE:             { _k_compile_endline(&node, root, &token, out);  break; }
             
-            case _K_TOKEN_TYPE_KEYWORD:             { _k_compile_keyword(&node, token);             break; }
+            case _K_TOKEN_TYPE_KEYWORD:             { _k_compile_keyword(&node, token);              break; }
             case _K_TOKEN_TYPE_ASSIGNMENT:
             case _K_TOKEN_TYPE_OPERATOR: 
-            case _K_TOKEN_TYPE_DECLARATOR:          { _k_compile_operator(&node, token);            break; }
+            case _K_TOKEN_TYPE_DECLARATOR:          { _k_compile_operator(&node, token);             break; }
         }
     } while (token++->tokenable->type != _K_TOKEN_TYPE_EOF);
 }
