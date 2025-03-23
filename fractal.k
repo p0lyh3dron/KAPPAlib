@@ -122,8 +122,8 @@ f32: abs(f32: t) {
 };
 
 f32: z(f32: re, f32: im) {
-    f32: tempr = *re;
-    f32: tempi = *im;
+    f32: tempr = abs(*re);
+    f32: tempi = abs(*im);
 
     *re = (tempr * tempr) - (tempi * tempi);
     *im = 2 * tempr * tempi;

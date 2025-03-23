@@ -96,7 +96,7 @@ typedef enum {
 
 void _k_print_args(_k_interp_t *interp) {
     for (int i = 0; i < interp->frame->var_count; ++i) {
-        printf("%s: %s = %ld (long) %f (double)\n", interp->frame->vars[i].type, interp->frame->vars[i].name, *(long*)interp->frame->vars[i].mem, *(double*)interp->frame->vars[i].mem);
+        fprintf(stderr, "%s: %s = %ld (long) %f (double)\n", interp->frame->vars[i].type, interp->frame->vars[i].name, *(long*)interp->frame->vars[i].mem, *(double*)interp->frame->vars[i].mem);
     }
 }
 
@@ -532,7 +532,10 @@ int _k_cmprd(_k_interp_t *interp, char *a0, char *a1, char *a2) {
 
 int _k_jmpeq(_k_interp_t *interp, char *a0, char *a1, char *a2) {
     if (interp->frame->cmp) {
-        return _k_find_label(interp, a0);
+        int ret = _k_find_label(interp, a0);
+        interp->frame->cur--;
+
+        return ret;
     }
 
     return 0;
@@ -595,6 +598,25 @@ int _k_savea(_k_interp_t *interp, char *a0, char *a1, char *a2) {
     return 0;
 }
 
+int _k_negrr(_k_interp_t *interp, char *a0, char *a1, char *a2) {
+    _k_reg_t *r0 = &interp->frame->r[(long)a0];
+    _k_reg_t *r1 = &interp->frame->r[(long)a1];
+
+    if (r1->rf) {
+        double f = -*(double*)&r1->r;
+        memcpy(&r0->r, &f, sizeof(double));
+        r0->rf = 1;
+    }
+
+    else {
+        long l = -r1->r;
+        memcpy(&r0->r, &l, sizeof(long));
+        r0->rf = 0;
+    }
+
+    return 0;
+}
+
 const _k_inst_t _k_inst_list[] = {
     {"\tpushr:", _k_pushr},
     {"\tpoprr:", _k_poprr},
@@ -617,12 +639,13 @@ const _k_inst_t _k_inst_list[] = {
     {"\tjmpal:", _k_jmpal},
     {"\tderef:", _k_deref},
     {"\trefsv:", _k_refsv},
-    {"\tsavea:", _k_savea}
+    {"\tsavea:", _k_savea},
+    {"\tnegrr:", _k_negrr}
 };
 
 int push(_k_interp_t *interp, void *data, long size) {
     interp->frame->sp -= size;
-    memcpy(interp->mem + interp->frame->sp, &data, size);
+    memcpy(interp->mem + interp->frame->sp, data, size);
 
     return 0;
 }
@@ -818,7 +841,7 @@ void _k_translate(_k_interp_t *interp) {
 }
 
 int main() {
-    FILE *fp = fopen("math.kasm", "r");
+    FILE *fp = fopen("fractal.kasm", "r");
 
     if (fp == (FILE*)0x0) {
         fprintf(stderr, "Failed to open math.kasm!\n");
@@ -873,6 +896,9 @@ int main() {
     double real = 1.0;
     double imag = 1.0;
 
+    double *real_ptr = &real;
+    double *imag_ptr = &imag;
+
     //push(interp, &real, sizeof(double));
     //push(interp, &imag, sizeof(double));
     call(interp, "rmin");
@@ -892,6 +918,20 @@ int main() {
     fprintf(stderr, "imin = %f\n", imin);
     fprintf(stderr, "imax = %f\n", imax);
 
+    double a = 1.0;
+    double b = -1.0;
+
+    call(interp, "abs");
+    push(interp, &a, sizeof(double));
+    double c = loop(interp, frame);
+
+    call(interp, "abs");
+    push(interp, &b, sizeof(double));
+    double d = loop(interp, frame);
+
+    fprintf(stderr, "abs(%f) = %f\n", a, c);
+    fprintf(stderr, "abs(%f) = %f\n", b, d);
+
     const int W = 640; const int H = 640;
     char img[W][H];
 
@@ -904,8 +944,8 @@ int main() {
 
             while (real * real + imag * imag < 16 && i < 64) {
                 call(interp, "z");
-                push(interp, &real, sizeof(double));
-                push(interp, &imag, sizeof(double));
+                push(interp, &real_ptr, sizeof(double));
+                push(interp, &imag_ptr, sizeof(double));
                 loop(interp, frame);
 
                 //printf("z = %f + %fi\n", real, imag);

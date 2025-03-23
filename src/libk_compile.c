@@ -21,6 +21,7 @@
 #include "libk_parse.h"
 
 int _k_build_error = 0;
+int _s = -1;
 
 /*
  *    Gets the error code.
@@ -268,9 +269,8 @@ void _k_compile_endline(_k_tree_t **node, _k_tree_t *root, _k_token_t **token, F
 
     if ((*node)->parent == (_k_tree_t*)0x0) {
         int r = 0;
-        int s = -1;
 
-        _k_assemble_tree(root, &r, &s, out);
+        _k_assemble_tree(root, &r, &_s, out);
 
         //_k_free_tree(root);
         (*token)++;
@@ -324,6 +324,18 @@ void _k_compile_operator(_k_tree_t **node, _k_token_t *token) {
 
     if (((*node)->token->tokenable->type == _K_TOKEN_TYPE_OPERATOR || (*node)->token->tokenable->type == _K_TOKEN_TYPE_ASSIGNMENT) && strcmp((*node)->token->str, ".") != 0) {
         (*node) = _k_place_child((*node), token); return;
+    }
+
+    /* Akin to a blank tree. This token must be unary.  */
+    if ((*node)->token->tokenable->type == _K_TOKEN_TYPE_NEWSTATEMENT) {
+        (*node) = _k_place_child((*node), token); return;
+    }
+
+    /* Same thing here, if we see a new expression, and it succeeds an identifier, this is a function call, treat it as unary.  */
+    if ((*node)->token->tokenable->type == _K_TOKEN_TYPE_NEWEXPRESSION) {
+        if ((*node)->parent->token->tokenable->type == _K_TOKEN_TYPE_IDENTIFIER) {
+            (*node) = _k_place_child((*node), token); return;
+        }
     }
 
     while ((*node)->parent != (_k_tree_t *)0x0 && (_k_get_prec(token->str) < _k_get_prec((*node)->parent->token->str)) && (*node)->parent->child_count != 1) { (*node) = (*node)->parent; }
@@ -395,6 +407,8 @@ char *_k_compile(_k_token_t *tokens, int flags) {
     char   *out;
     size_t  size;
     FILE   *f = open_memstream(&out, &size);
+
+    _s = -1;
 
     _k_compile_tree(tokens, f, flags);
 
